@@ -27,23 +27,35 @@ from utils.reddit import is_bot_or_automoderator, is_moderator_reply_to_comment,
 
 
 def get_all_arctic_shift_subreddits(logger):
-    """Get list of all subreddit comment files from Arctic Shift."""
+    """Get list of all subreddit comment files from Arctic Shift.
+
+    Returns a list of (subreddit_name, filepath, file_size) tuples sorted
+    by file_size descending so the largest subreddits start first (better
+    load balancing across workers). Uses os.scandir() so directory metadata
+    comes back in the same RPC as readdir() on supporting filesystems.
+    """
     subreddit_files = []
 
-    for first_char in os.listdir(ARCTIC_SHIFT_DATA):
-        char_dir = os.path.join(ARCTIC_SHIFT_DATA, first_char)
-        if not os.path.isdir(char_dir):
-            continue
+    with os.scandir(ARCTIC_SHIFT_DATA) as shard_iter:
+        for shard_entry in shard_iter:
+            if not shard_entry.is_dir(follow_symlinks=False):
+                continue
+            with os.scandir(shard_entry.path) as file_iter:
+                for file_entry in file_iter:
+                    if not file_entry.name.endswith('_comments.zst'):
+                        continue
+                    subreddit_name = file_entry.name.replace('_comments.zst', '')
+                    try:
+                        size = file_entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        size = 0
+                    subreddit_files.append((
+                        normalize_subreddit_name(subreddit_name),
+                        file_entry.path,
+                        size,
+                    ))
 
-        for filename in os.listdir(char_dir):
-            if filename.endswith('_comments.zst'):
-                subreddit_name = filename.replace('_comments.zst', '')
-                filepath = os.path.join(char_dir, filename)
-                subreddit_files.append((
-                    normalize_subreddit_name(subreddit_name),
-                    filepath
-                ))
-
+    subreddit_files.sort(key=lambda t: t[2], reverse=True)
     logger.info(f"Found {len(subreddit_files)} subreddits in Arctic Shift")
     return subreddit_files
 
@@ -165,9 +177,24 @@ def main():
             log_stage_end(logger, 1, success=False, elapsed_time=time.time() - start_time)
             return 1
 
-        # Get all subreddit files from Arctic Shift
-        logger.info("📁 Discovering subreddits from Arctic Shift...")
-        subreddit_files = get_all_arctic_shift_subreddits(logger)
+        # Get all subreddit files from Arctic Shift (with disk cache to avoid
+        # re-walking GPFS metadata on every rerun -- the walk takes ~20 minutes).
+        cache_file = os.path.join(PATHS['data'], 'stage1_arctic_shift_discovery_cache.json')
+        if os.path.exists(cache_file):
+            logger.info(f"📁 Loading Arctic Shift discovery cache: {cache_file}")
+            cache_data = read_json_file(cache_file)
+            subreddit_files = [tuple(t) for t in cache_data.get('subreddit_files', [])]
+            logger.info(f"   Loaded {len(subreddit_files)} subreddits from cache")
+            logger.info(f"   (Delete {os.path.basename(cache_file)} to force rediscovery)")
+        else:
+            logger.info("📁 Discovering subreddits from Arctic Shift...")
+            subreddit_files = get_all_arctic_shift_subreddits(logger)
+            logger.info(f"💾 Saving discovery cache: {cache_file}")
+            write_json_file(
+                {'arctic_shift_root': ARCTIC_SHIFT_DATA,
+                 'subreddit_files': subreddit_files},
+                cache_file, pretty=False
+            )
 
         if not subreddit_files:
             logger.error("❌ No subreddit files found in Arctic Shift")
