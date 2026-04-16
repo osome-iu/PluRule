@@ -196,13 +196,36 @@ def validate_stage4(verbose=False):
     subreddit_dirs = [d for d in os.listdir(organized_dir)
                       if os.path.isdir(os.path.join(organized_dir, d))]
 
-    info.append(f"Files on disk: {len(subreddit_dirs)} subreddit directories")
+    # Count submission_*.pkl files inside each subreddit dir
+    pkl_per_sub = {}
+    total_pkls = 0
+    empty_dirs = []
+    for sub in subreddit_dirs:
+        sub_path = os.path.join(organized_dir, sub)
+        try:
+            pkls = [f for f in os.listdir(sub_path)
+                    if f.startswith('submission_') and f.endswith('.pkl')]
+        except OSError:
+            pkls = []
+        pkl_per_sub[sub] = len(pkls)
+        total_pkls += len(pkls)
+        if not pkls:
+            empty_dirs.append(sub)
+
+    info.append(f"Files on disk: {len(subreddit_dirs)} subreddit directories, {total_pkls} submission_*.pkl files")
+
+    if empty_dirs:
+        issues.append(f"WARNING: {len(empty_dirs)} organized_comments dirs are empty (no submission_*.pkl files)")
+        if verbose:
+            for sub in sorted(empty_dirs)[:20]:
+                issues.append(f"  - {sub}/ (empty)")
 
     # Cross-validate with Stage 3 submission IDs manifest
     sub_ids_file = os.path.join(PATHS['data'], 'stage3_subreddit_submission_ids.json')
     if os.path.exists(sub_ids_file):
         sub_ids_data = read_json_file(sub_ids_file)
-        manifest_subreddits = set(sub_ids_data.get('subreddit_submission_ids', {}).keys())
+        manifest_map = sub_ids_data.get('subreddit_submission_ids', {})
+        manifest_subreddits = set(manifest_map.keys())
         extra_dirs = set(subreddit_dirs) - manifest_subreddits
         missing_dirs = manifest_subreddits - set(subreddit_dirs)
 
@@ -210,6 +233,20 @@ def validate_stage4(verbose=False):
             issues.append(f"WARNING: {len(extra_dirs)} organized_comments dirs NOT in Stage 3 submission IDs manifest (potentially stale)")
         if missing_dirs:
             issues.append(f"WARNING: {len(missing_dirs)} subreddits in manifest missing organized_comments dirs")
+
+        # Compare per-subreddit pkl counts to expected submission IDs
+        undercollected = []
+        for sub in sorted(set(subreddit_dirs) & manifest_subreddits):
+            expected = len(manifest_map.get(sub, []))
+            actual = pkl_per_sub.get(sub, 0)
+            if expected and actual < expected:
+                undercollected.append((sub, actual, expected))
+
+        if undercollected:
+            issues.append(f"WARNING: {len(undercollected)} subreddits have fewer .pkl files than expected from Stage 3 manifest")
+            if verbose:
+                for sub, actual, expected in undercollected[:20]:
+                    issues.append(f"  - {sub}: {actual}/{expected} .pkl files")
 
     # Load Stage 4 summary
     stage4_summary_file = os.path.join(PATHS['data'], 'stage4_submission_comment_collection_stats.json')
@@ -271,12 +308,24 @@ def validate_stage6(verbose=False):
     return issues, info
 
 
-def validate_stage8(verbose=False):
-    """Validate Stage 8: Dataset consistency."""
+def _check_data_files(expected, label):
+    """Check existence of a list of (filename, severity) pairs in PATHS['data']."""
+    issues = []
+    found = 0
+    for fname, sev in expected:
+        fpath = os.path.join(PATHS['data'], fname)
+        if os.path.exists(fpath):
+            found += 1
+        else:
+            issues.append(f"{sev}: {label} output missing: {fname}")
+    return issues, found
+
+
+def _check_stage7_input_readiness():
+    """Cross-check that Stage 7's successful IDs have backing tree/thread/submission files."""
     issues = []
     info = []
 
-    # Load Stage 7 successful IDs
     stage7_file = os.path.join(PATHS['data'], 'stage7_successful_submission_ids.json')
     if not os.path.exists(stage7_file):
         info.append("Stage 7 successful IDs not found (stage 7 may not have run yet)")
@@ -290,21 +339,13 @@ def validate_stage8(verbose=False):
     else:
         stage7_subreddits = set()
 
-    # Check that required files exist for each subreddit in Stage 7
-    missing_trees = []
-    missing_threads = []
-    missing_submissions = []
-
+    missing_trees, missing_threads, missing_submissions = [], [], []
     for subreddit in stage7_subreddits:
-        tree_file = os.path.join(PATHS['comment_trees'], f"{subreddit}_comment_trees.pkl")
-        thread_file = os.path.join(PATHS['discussion_threads'], f"{subreddit}_discussion_threads.pkl")
-        submission_file = os.path.join(PATHS['submissions'], f"{subreddit}_submissions.zst")
-
-        if not os.path.exists(tree_file):
+        if not os.path.exists(os.path.join(PATHS['comment_trees'], f"{subreddit}_comment_trees.pkl")):
             missing_trees.append(subreddit)
-        if not os.path.exists(thread_file):
+        if not os.path.exists(os.path.join(PATHS['discussion_threads'], f"{subreddit}_discussion_threads.pkl")):
             missing_threads.append(subreddit)
-        if not os.path.exists(submission_file):
+        if not os.path.exists(os.path.join(PATHS['submissions'], f"{subreddit}_submissions.zst")):
             missing_submissions.append(subreddit)
 
     if missing_trees:
@@ -315,16 +356,293 @@ def validate_stage8(verbose=False):
         issues.append(f"WARNING: {len(missing_submissions)} Stage 7 subreddits missing submission files")
 
     info.append(f"Stage 7: {len(stage7_subreddits)} subreddits with successful submissions")
+    return issues, info
+
+
+def validate_stage8(verbose=False):
+    """Validate Stage 8: Final dataset outputs."""
+    issues = []
+    info = []
+
+    expected = [
+        ('train_hydrated.json.zst', 'CRITICAL'),
+        ('val_hydrated.json.zst', 'CRITICAL'),
+        ('test_hydrated.json.zst', 'CRITICAL'),
+        ('train_dehydrated.json.zst', 'CRITICAL'),
+        ('val_dehydrated.json.zst', 'CRITICAL'),
+        ('test_dehydrated.json.zst', 'CRITICAL'),
+        ('test_hydrated.json', 'WARNING'),
+        ('stage8_final_datasets_stats.json', 'CRITICAL'),
+        ('stage8_llm_verification_results.json', 'WARNING'),
+        ('stage8_thread_distribution_analysis.json', 'WARNING'),
+    ]
+    file_issues, found = _check_data_files(expected, 'Stage 8')
+    info.append(f"Stage 8 outputs found: {found}/{len(expected)} expected files")
+    issues.extend(file_issues)
+
+    # Also check Stage 7 → Stage 8 input readiness (informative; useful when re-running)
+    readiness_issues, readiness_info = _check_stage7_input_readiness()
+    info.extend(readiness_info)
+    issues.extend(readiness_issues)
+
+    return issues, info
+
+
+def validate_stage10(verbose=False):
+    """Validate Stage 10: Cluster-labeled dataset outputs."""
+    issues = []
+    info = []
+
+    expected = [
+        ('train_hydrated_clustered.json.zst', 'CRITICAL'),
+        ('val_hydrated_clustered.json.zst', 'CRITICAL'),
+        ('test_hydrated_clustered.json.zst', 'CRITICAL'),
+        ('train_dehydrated_clustered.json.zst', 'WARNING'),
+        ('val_dehydrated_clustered.json.zst', 'WARNING'),
+        ('test_dehydrated_clustered.json.zst', 'WARNING'),
+        ('test_hydrated_clustered.json', 'WARNING'),
+        ('stage10_cluster_assignment_stats.json', 'CRITICAL'),
+        ('stage10_dataset_stats_table.tex', 'WARNING'),
+    ]
+    file_issues, found = _check_data_files(expected, 'Stage 10')
+    info.append(f"Stage 10 outputs found: {found}/{len(expected)} expected files")
+    issues.extend(file_issues)
+
+    # Cross-check that Stage 8 hydrated splits exist as inputs
+    for split in ('train', 'val', 'test'):
+        src = os.path.join(PATHS['data'], f'{split}_hydrated.json.zst')
+        if not os.path.exists(src):
+            issues.append(f"WARNING: Stage 10 input missing: {split}_hydrated.json.zst")
+
+    return issues, info
+
+
+def validate_stage1(verbose=False):
+    """Validate Stage 1: Mod comment collection consistency."""
+    issues = []
+    info = []
+
+    output_dir = PATHS['top_subreddits']
+    if not os.path.exists(output_dir):
+        issues.append("WARNING: top_subreddits directory not found")
+        return issues, info
+
+    mod_files = glob.glob(os.path.join(output_dir, '*_mod_comments.jsonl.zst'))
+    disk_subreddits = {os.path.basename(f).replace('_mod_comments.jsonl.zst', '') for f in mod_files}
+
+    info.append(f"Files on disk: {len(mod_files)} mod_comments files")
+
+    rankings_file = os.path.join(PATHS['data'], 'stage1_subreddit_mod_comment_rankings.json')
+    if not os.path.exists(rankings_file):
+        issues.append("CRITICAL: stage1_subreddit_mod_comment_rankings.json not found")
+        return issues, info
+
+    rankings = read_json_file(rankings_file)
+    ranked_subreddits = {r['subreddit'] for r in rankings.get('rankings', [])}
+    info.append(f"Rankings: {len(ranked_subreddits)} subreddits")
+
+    extra_files = disk_subreddits - ranked_subreddits
+    missing_files = ranked_subreddits - disk_subreddits
+
+    if extra_files:
+        issues.append(f"CRITICAL: {len(extra_files)} mod_comments files on disk NOT in rankings (stale from previous runs)")
+        if verbose:
+            for sub in sorted(extra_files)[:20]:
+                issues.append(f"  - {sub}_mod_comments.jsonl.zst (stale)")
+
+    if missing_files:
+        issues.append(f"WARNING: {len(missing_files)} subreddits in rankings missing mod_comments files on disk")
+        if verbose:
+            for sub in sorted(missing_files)[:20]:
+                issues.append(f"  - {sub} (missing)")
+
+    # Verify summary total_subreddits vs rankings length
+    summary_total = rankings.get('summary', {}).get('total_subreddits')
+    if summary_total is not None and summary_total != len(ranked_subreddits):
+        issues.append(f"WARNING: Rankings summary total_subreddits ({summary_total}) != length of rankings list ({len(ranked_subreddits)})")
+
+    # Date consistency
+    if mod_files:
+        mtimes = defaultdict(int)
+        for f in mod_files:
+            mtime = os.path.getmtime(f)
+            date_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
+            mtimes[date_str] += 1
+        if len(mtimes) > 1:
+            issues.append(f"WARNING: Mod comment files span {len(mtimes)} different dates: {sorted(mtimes.keys())}")
+            for date, count in sorted(mtimes.items()):
+                info.append(f"  {date}: {count} files")
+
+    return issues, info
+
+
+def validate_stage7(verbose=False):
+    """Validate Stage 7: Media collection consistency."""
+    issues = []
+    info = []
+
+    media_dir = PATHS['media']
+    if not os.path.exists(media_dir):
+        issues.append("WARNING: media directory not found")
+        return issues, info
+
+    # Subreddit dirs that have at least one media file
+    media_subreddits = []
+    media_per_sub = {}
+    total_media = 0
+    for sub in os.listdir(media_dir):
+        sub_path = os.path.join(media_dir, sub)
+        if not os.path.isdir(sub_path):
+            continue
+        try:
+            files = [f for f in os.listdir(sub_path) if not f.startswith('.')]
+        except OSError:
+            files = []
+        media_subreddits.append(sub)
+        media_per_sub[sub] = len(files)
+        total_media += len(files)
+
+    info.append(f"Files on disk: {len(media_subreddits)} media subreddit dirs, {total_media} media files")
+
+    # Cross-check against successful submission IDs manifest
+    ids_file = os.path.join(PATHS['data'], 'stage7_successful_submission_ids.json')
+    if not os.path.exists(ids_file):
+        issues.append("CRITICAL: stage7_successful_submission_ids.json not found")
+        return issues, info
+
+    ids_data = read_json_file(ids_file)
+    if isinstance(ids_data, dict) and 'subreddit_submission_ids' in ids_data:
+        manifest_map = ids_data['subreddit_submission_ids']
+    elif isinstance(ids_data, dict):
+        manifest_map = ids_data
+    else:
+        manifest_map = {}
+
+    manifest_subreddits = set(manifest_map.keys())
+    info.append(f"Manifest: {len(manifest_subreddits)} subreddits with successful submissions")
+
+    if not manifest_subreddits:
+        issues.append("WARNING: stage7_successful_submission_ids.json contains no submission IDs (empty manifest)")
+
+    extra_dirs = set(media_subreddits) - manifest_subreddits
+    missing_dirs = manifest_subreddits - set(media_subreddits)
+
+    if extra_dirs:
+        issues.append(f"WARNING: {len(extra_dirs)} media subreddit dirs NOT in successful IDs manifest (potentially stale)")
+        if verbose:
+            for sub in sorted(extra_dirs)[:20]:
+                issues.append(f"  - media/{sub}/ (stale)")
+
+    if missing_dirs:
+        issues.append(f"WARNING: {len(missing_dirs)} subreddits in manifest missing media dirs on disk")
+        if verbose:
+            for sub in sorted(missing_dirs)[:20]:
+                issues.append(f"  - {sub} (missing)")
+
+    # Per-subreddit: each manifest submission ID should have at least one media file with that prefix.
+    # Media filename pattern: {submission_id}_{media_id}_{source}.{ext}
+    undercollected = []
+    for sub in sorted(set(media_subreddits) & manifest_subreddits):
+        expected_ids = set(manifest_map.get(sub, []))
+        if not expected_ids:
+            continue
+        sub_path = os.path.join(media_dir, sub)
+        try:
+            disk_files = os.listdir(sub_path)
+        except OSError:
+            disk_files = []
+        # Extract submission ID prefix (everything before first underscore)
+        present_ids = {f.split('_', 1)[0] for f in disk_files if '_' in f}
+        missing_ids = expected_ids - present_ids
+        if missing_ids:
+            undercollected.append((sub, len(missing_ids), len(expected_ids)))
+
+    if undercollected:
+        issues.append(f"WARNING: {len(undercollected)} subreddits missing media files for some manifest IDs")
+        if verbose:
+            for sub, missing, total in undercollected[:20]:
+                issues.append(f"  - {sub}: {missing}/{total} submission IDs without media")
+
+    # Verify stats file exists
+    stats_file = os.path.join(PATHS['data'], 'stage7_media_collection_stats.json')
+    if not os.path.exists(stats_file):
+        issues.append("WARNING: stage7_media_collection_stats.json not found")
+
+    return issues, info
+
+
+def validate_stage9a(verbose=False):
+    """Validate Stage 9a: Embeddings + metadata TSV consistency."""
+    issues = []
+    info = []
+
+    embeddings_dir = PATHS['embeddings']
+    if not os.path.exists(embeddings_dir):
+        issues.append("WARNING: embeddings directory not found")
+        return issues, info
+
+    pairs = [
+        ('all_subreddit_embeddings.tsv', 'all_subreddit_metadata.tsv'),
+        ('all_rule_embeddings.tsv', 'all_rule_metadata.tsv'),
+    ]
+
+    # Metadata TSVs are written by pandas and may contain quoted multi-line fields
+    # (e.g. rule descriptions with embedded newlines), so naive line counts are
+    # unreliable. Use pandas for the metadata; embedding TSV is one row per line.
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None
+
+    for emb_name, meta_name in pairs:
+        emb_path = os.path.join(embeddings_dir, emb_name)
+        meta_path = os.path.join(embeddings_dir, meta_name)
+
+        emb_exists = os.path.exists(emb_path)
+        meta_exists = os.path.exists(meta_path)
+
+        if not emb_exists:
+            issues.append(f"CRITICAL: Stage 9a output missing: {emb_name}")
+        if not meta_exists:
+            issues.append(f"CRITICAL: Stage 9a output missing: {meta_name}")
+
+        if not (emb_exists and meta_exists):
+            continue
+
+        try:
+            with open(emb_path, 'r') as f:
+                emb_rows = sum(1 for _ in f)
+        except OSError as e:
+            issues.append(f"WARNING: Could not read {emb_name}: {e}")
+            continue
+
+        if pd is not None:
+            try:
+                meta_rows = len(pd.read_csv(meta_path, sep='\t'))
+            except Exception as e:
+                issues.append(f"WARNING: Could not parse {meta_name} with pandas: {e}")
+                continue
+        else:
+            issues.append(f"WARNING: pandas unavailable; skipping row-count check for {meta_name}")
+            continue
+
+        info.append(f"{emb_name}: {emb_rows} rows, {meta_name}: {meta_rows} rows")
+        if emb_rows != meta_rows:
+            issues.append(f"CRITICAL: Row count mismatch between {emb_name} ({emb_rows}) and {meta_name} ({meta_rows}) — possible partial-write")
 
     return issues, info
 
 
 VALIDATORS = {
+    1: ("Stage 1: Mod Comments", validate_stage1),
     3: ("Stage 3: Match Rules", validate_stage3),
     4: ("Stage 4: Organized Comments", validate_stage4),
     5: ("Stage 5: Trees & Threads", validate_stage5),
     6: ("Stage 6: Submissions", validate_stage6),
+    7: ("Stage 7: Media", validate_stage7),
     8: ("Stage 8: Dataset", validate_stage8),
+    9: ("Stage 9a: Embeddings", validate_stage9a),
+    10: ("Stage 10: Clustered Dataset", validate_stage10),
 }
 
 

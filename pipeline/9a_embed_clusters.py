@@ -254,7 +254,7 @@ def embed_with_vllm(tokenized_texts: List[List[int]], model_name: str, max_lengt
     logger.info(f"Initializing vLLM with max_model_len={optimal_max_len}...")
 
     # Initialize vLLM model
-    model = LLM(model=model_name, task="embed", gpu_memory_utilization=0.95, enforce_eager=True, max_model_len=optimal_max_len, seed=0)
+    model = LLM(model=model_name, task="embed", gpu_memory_utilization=0.92, enforce_eager=True, max_model_len=optimal_max_len, seed=0)
     logger.info("✅ vLLM model loaded")
 
     # Create TokensPrompt objects
@@ -315,7 +315,7 @@ def main():
 
         # Set CUDA device 1 by default
         if torch.cuda.is_available():
-            os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+            os.environ['CUDA_VISIBLE_DEVICES'] = '0'
             logger.info(f"🎯 Using CUDA device 1")
         else:
             logger.info(f"💻 Using CPU mode")

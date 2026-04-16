@@ -54,7 +54,7 @@ DATA_FLOW = {
         'produces': [
             'comments/YYYY/RC_*.zst',  # Reddit comment files organized by year
             'submissions/YYYY/RS_*.zst',  # Reddit submission files organized by year
-            'stage0_download_log.json'
+            '../logs/stage0_download_log.json'  # actually written to PATHS['logs']
         ]
     },
 
@@ -64,8 +64,8 @@ DATA_FLOW = {
         'input_paths': [],  # Uses Arctic Shift data directly
         'output_dir': 'top_subreddits',
         'produces': [
-            '{subreddit}_mod_comments.jsonl.zst',  # One per subreddit
-            'stage1_subreddit_mod_comment_rankings.json'
+            '{subreddit}_mod_comments.jsonl.zst',  # in PATHS['top_subreddits'], one per subreddit
+            '../../data/stage1_subreddit_mod_comment_rankings.json'  # actually written to PATHS['data']
         ],
         'notes': 'Reads Arctic Shift subreddit files, filters mod comments. Replaces old Stage 1 + Stage 3.'
     },
@@ -92,12 +92,12 @@ DATA_FLOW = {
         ],
         'output_dir': 'matched_comments',
         'produces': [
-            '{subreddit}_match.jsonl.zst',
-            '{subreddit}_stats.json',
-            '{subreddit}_similarity_matrix.pt',
-            'stage3_matching_summary.json',
-            'stage3_subreddit_submission_ids.json',
-            'cosine_similarity_distribution_all_percentiles.png'
+            '{subreddit}_match.jsonl.zst',  # in PATHS['matched_comments']
+            '{subreddit}_stats.json',  # in PATHS['matched_comments']
+            '{subreddit}_similarity_matrix.pt',  # in PATHS['matched_comments']
+            'cosine_similarity_distribution_all_percentiles.png',  # in PATHS['matched_comments']
+            '../../data/stage3_matching_summary.json',  # actually written to PATHS['data']
+            '../../data/stage3_subreddit_submission_ids.json'  # actually written to PATHS['data']
         ],
         'notes': 'Phase 1: Create similarity matrices using vLLM embeddings. Phase 2: Apply global percentile thresholds for matching. Filters ambiguous matches, ranks by JSD.'
     },
@@ -110,8 +110,8 @@ DATA_FLOW = {
         'input_files': ['stage3_subreddit_submission_ids.json'],
         'output_dir': 'organized_comments',
         'produces': [
-            '{subreddit}_submission_comments.pkl',
-            'stage4_submission_comment_collection_stats.json'
+            '{subreddit}/submission_{submission_id}.pkl',  # one file per submission, inside per-subreddit subdir
+            '../../data/stage4_submission_comment_collection_stats.json'  # actually written to PATHS['data']
         ],
         'notes': '2-pass per subreddit: filter with process_zst_file_multi → deduplicate with [removed]/[deleted] preservation'
     },
@@ -120,13 +120,16 @@ DATA_FLOW = {
         'name': 'Build Comment Trees and Discussion Threads',
         'script': '5_build_trees_and_threads.py',
         'input_paths': ['organized_comments', 'matched_comments'],
-        'input_files': ['stage2_sfw_subreddits_min_{MIN_MATCHED_COMMENTS}_comments.json'],
+        'input_files': [
+            'stage2_sfw_subreddits_min_{MIN_MATCHED_COMMENTS}_comments.json',
+            'stage3_matching_summary.json'
+        ],
         'output_dir': 'comment_trees',
         'alternate_output_dirs': ['discussion_threads'],  # Also outputs here
         'produces': [
-            'comment_trees/{subreddit}_comment_trees.pkl',
-            'discussion_threads/{subreddit}_discussion_threads.pkl',
-            'stage5_trees_and_threads_summary.json'
+            'comment_trees/{subreddit}_comment_trees.pkl',  # in PATHS['comment_trees']
+            'discussion_threads/{subreddit}_discussion_threads.pkl',  # in PATHS['discussion_threads']
+            '../../data/stage5_trees_and_threads_summary.json'  # actually written to PATHS['data']
         ],
         'notes': 'Builds trees (parent-child, depth levels), creates moderated/unmoderated pairs, requires 500+ pairs, ranks by JSD'
     },
@@ -135,14 +138,14 @@ DATA_FLOW = {
     'stage6_collect_submissions': {
         'name': 'Collect Submissions from Discussion Threads',
         'script': '6_collect_submissions.py',
-        'input_paths': ['reddit_submissions', 'discussion_threads'],
+        'input_paths': ['reddit_submissions'],  # Arctic Shift submissions
         'input_files': ['stage5_trees_and_threads_summary.json'],
         'output_dir': 'submissions',
         'produces': [
-            '{subreddit}_submissions.zst',
-            'stage6_submission_collection_stats.json'
+            '{subreddit}_submissions.zst',  # in PATHS['submissions']
+            '../../data/stage6_submission_collection_stats.json'  # actually written to PATHS['data']
         ],
-        'notes': '3-phase: extract IDs from threads → process RS files → consolidate by subreddit'
+        'notes': '3-phase: extract IDs from stage 5 summary → process RS files from Arctic Shift → consolidate by subreddit'
     },
 
     'stage7_collect_media': {
@@ -152,15 +155,15 @@ DATA_FLOW = {
         'input_files': ['stage6_submission_collection_stats.json'],
         'output_dir': 'media',
         'produces': [
-            '{subreddit}/{submission_id}_{media_id}_{source}.{ext}',  # Downloaded media files
-            'stage7_media_collection_stats.json',
-            'stage7_successful_submission_ids.json'
+            '{subreddit}/{submission_id}_{media_id}_{source}.{ext}',  # Downloaded media files in PATHS['media']
+            '../../data/stage7_media_collection_stats.json',  # actually written to PATHS['data']
+            '../../data/stage7_successful_submission_ids.json'  # actually written to PATHS['data']
         ],
         'notes': 'Priority: media_metadata → url → oembed → preview. Skips NSFW/crosspost/URL-only selfposts. Validates file types.'
     },
 
     'stage8_create_datasets': {
-        'name': 'Create Final Datasets (Hydrated + Unhydrated)',
+        'name': 'Create Final Datasets (Hydrated + Dehydrated splits)',
         'script': '8_create_dehydrated_dataset.py',
         'input_paths': ['discussion_threads', 'comment_trees', 'submissions', 'media'],
         'input_files': [
@@ -174,13 +177,18 @@ DATA_FLOW = {
         ],
         'output_dir': 'data',
         'produces': [
-            'reddit_moderation_dataset_hydrated_v1.0.json.zst',
-            'reddit_moderation_dataset_unhydrated_v1.0.json.zst',
-            'reddit_moderation_dataset_hydrated_SAMPLE.json',
-            'reddit_moderation_dataset_unhydrated_SAMPLE.json',
-            'stage8_final_datasets_stats.json'
+            'train_hydrated.json.zst',
+            'val_hydrated.json.zst',
+            'test_hydrated.json.zst',
+            'train_dehydrated.json.zst',
+            'val_dehydrated.json.zst',
+            'test_dehydrated.json.zst',
+            'test_hydrated.json',  # uncompressed test split
+            'stage8_final_datasets_stats.json',
+            'stage8_llm_verification_results.json',
+            'stage8_thread_distribution_analysis.json'
         ],
-        'notes': 'Samples exactly 500 pairs per subreddit, ranks ALL by JSD. Hydrated: full objects. Unhydrated: IDs with [NEEDS_HYDRATION] placeholders.'
+        'notes': 'Adaptive train/val/test splits per subreddit + Qwen3-30B LLM judge verification. Hydrated: full objects. Dehydrated: IDs with [NEEDS_HYDRATION] placeholders.'
     },
 
     # Phase 5: Clustering
@@ -208,13 +216,16 @@ DATA_FLOW = {
         'script': '9b_cluster_embeddings.py',
         'input_paths': ['embeddings'],
         'output_dir': 'clustering',
+        'alternate_output_dirs': ['embeddings'],  # reduced TSVs + updated metadata go here
         'produces': [
-            'subreddit_grid_search_results.json',
-            'rule_grid_search_results.json',
-            'all_subreddit_embeddings_reduced.tsv',
-            'all_rule_embeddings_reduced.tsv'
+            'clustering/subreddit_grid_search_results.json',
+            'clustering/rule_grid_search_results.json',
+            'embeddings/all_subreddit_embeddings_reduced.tsv',
+            'embeddings/all_rule_embeddings_reduced.tsv',
+            'embeddings/all_subreddit_metadata.tsv',  # MUTATED in place: cluster_id, cluster_label columns added
+            'embeddings/all_rule_metadata.tsv'  # MUTATED in place: cluster_id, cluster_label columns added
         ],
-        'notes': 'Grid search for optimal UMAP + HDBSCAN parameters. Saves best clustering to metadata TSV.'
+        'notes': 'Grid search for optimal UMAP + HDBSCAN parameters. Reduced embeddings + augmented metadata are written back into PATHS["embeddings"]; only grid_search results live in PATHS["clustering"].'
     },
 
     'stage9c_label_clusters': {
@@ -258,7 +269,12 @@ DATA_FLOW = {
             'train_hydrated_clustered.json.zst',
             'val_hydrated_clustered.json.zst',
             'test_hydrated_clustered.json.zst',
-            'stage10_cluster_assignment_stats.json'
+            'train_dehydrated_clustered.json.zst',
+            'val_dehydrated_clustered.json.zst',
+            'test_dehydrated_clustered.json.zst',
+            'test_hydrated_clustered.json',  # uncompressed
+            'stage10_cluster_assignment_stats.json',
+            'stage10_dataset_stats_table.tex'  # LaTeX table for paper
         ],
         'notes': 'Assigns cluster labels to all thread pairs in the dataset based on embedding metadata.'
     },
@@ -266,19 +282,23 @@ DATA_FLOW = {
     'stage11a_human_evaluation': {
         'name': 'Human Evaluation Setup (Google Forms)',
         'script': '11a_human_evaluation.py',
-        'input_files': ['test_hydrated_clustered.json.zst'],
-        'output_dir': 'data/evaluation',
+        'input_files': [
+            'train_hydrated_clustered.json.zst',
+            'val_hydrated_clustered.json.zst',
+            'test_hydrated_clustered.json.zst'
+        ],
+        'output_dir': 'evaluation',
         'produces': [
             'stage11_human_evaluation_metadata.json'
         ],
-        'notes': 'Samples comments for human evaluation, creates Google Forms. Requires OAuth2 credentials.'
+        'notes': 'Samples comments for human evaluation across all splits, creates Google Forms. Requires OAuth2 credentials.'
     },
 
     'stage11b_retrieve_responses': {
         'name': 'Retrieve Human Evaluation Responses',
         'script': '11b_retrieve_responses.py',
         'input_files': ['evaluation/stage11_human_evaluation_metadata.json'],
-        'output_dir': 'data/evaluation',
+        'output_dir': 'evaluation',
         'produces': [
             'stage11_human_annotations.json'
         ],
@@ -289,7 +309,7 @@ DATA_FLOW = {
         'name': 'Evaluate Model Predictions Against Human Annotations',
         'script': '11c_evaluate_predictions.py',
         'input_files': ['evaluation/stage11_human_annotations.json'],
-        'output_dir': 'data/evaluation',
+        'output_dir': 'evaluation',
         'produces': [
             'stage11_evaluation_results.json'
         ],
@@ -326,7 +346,8 @@ def _generate_paths():
         'media': f"{BASE_DATA}/output/media",
         'final_dataset': f"{BASE_DATA}/output/final_dataset",
         'embeddings': f"{BASE_DATA}/output/embeddings",
-        'clustering': f"{BASE_DATA}/output/clustering"
+        'clustering': f"{BASE_DATA}/output/clustering",
+        'evaluation': f"{BASE_DATA}/data/evaluation"
     }
 
     return paths

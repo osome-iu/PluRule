@@ -25,7 +25,8 @@ LOGS_DIR = PROJECT_ROOT / "logs" / "eval"
 DATASET_FILES = {
     'train': DATA_DIR / 'train_hydrated_clustered.json.zst',
     'val': DATA_DIR / 'val_hydrated_clustered.json.zst',
-    'test': DATA_DIR / 'test_hydrated_clustered.json'
+    'test': DATA_DIR / 'test_hydrated_clustered.json',
+    'delta': DATA_DIR / 'delta_hydrated_clustered.json.zst',
 }
 
 def get_dataset_path(split: str) -> Path:

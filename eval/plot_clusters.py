@@ -46,6 +46,9 @@ from scipy.spatial import ConvexHull
 from collections import Counter
 from config import PATHS
 
+# Must match UMAP_RANDOM_STATE in pipeline/9b_cluster_embeddings.py
+UMAP_RANDOM_STATE = {'subreddit': 1, 'rule': 0}
+
 
 def rotate_coordinates(coords: np.ndarray, angle_degrees: float) -> np.ndarray:
     """Rotate 2D coordinates by specified angle (in degrees)."""
@@ -170,11 +173,12 @@ def apply_umap_2d(embeddings: np.ndarray, umap_params: dict, entity_type: str, l
     """
     min_dist = 1.0
     spread = 1.0
-    repulsion_strength = 3.0
+    repulsion_strength = 0.5
     n_neighbors = umap_params['n_neighbors']
     tw_tag = f'_tw{target_weight}' if cluster_labels is not None and target_weight > 0.0 else ''
     rs_tag = f'_rep{repulsion_strength}' if repulsion_strength != 1.0 else ''
-    cache_file = cache_dir / f'{entity_type}_umap_2d_n{n_neighbors}_d{min_dist}_s{spread}_rs42{tw_tag}{rs_tag}.npy'
+    random_state = UMAP_RANDOM_STATE[entity_type]
+    cache_file = cache_dir / f'{entity_type}_umap_2d_n{n_neighbors}_d{min_dist}_s{spread}_rs{random_state}{tw_tag}{rs_tag}.npy'
 
     # Try to load from cache
     if cache_file.exists():
@@ -189,7 +193,7 @@ def apply_umap_2d(embeddings: np.ndarray, umap_params: dict, entity_type: str, l
 
     # Build UMAP kwargs
     umap_kwargs = dict(n_neighbors=n_neighbors, n_components=2, min_dist=min_dist, spread=spread,
-                       repulsion_strength=repulsion_strength, metric='cosine', random_state=42, n_jobs=PROCESSES)
+                       repulsion_strength=repulsion_strength, metric='cosine', random_state=random_state, n_jobs=PROCESSES)
 
     # Enable supervised UMAP if labels provided and weight > 0
     supervised = cluster_labels is not None and target_weight > 0.0
@@ -363,8 +367,8 @@ def main():
     """Main execution function."""
     # Parse arguments
     parser = argparse.ArgumentParser(description='Plot cluster visualizations (two-column ACL format)')
-    parser.add_argument('--rotate-sub', type=float, default=121.52, help='Rotation angle for subreddit clusters (default: 240)')
-    parser.add_argument('--rotate-rule', type=float, default=62, help='Rotation angle for rule clusters (default: 310)')
+    parser.add_argument('--rotate-sub', type=float, default=158, help='Rotation angle for subreddit clusters (default: 240)')
+    parser.add_argument('--rotate-rule', type=float, default=-70, help='Rotation angle for rule clusters (default: 310)')
     parser.add_argument('--grey-bars', action='store_true', help='Use grey bars instead of cluster colors')
     parser.add_argument('--target-weight', type=float, default=1.0,
                         help='Supervised UMAP target weight: 0.0=unsupervised, 1.0=fully supervised (default: 1.0)')

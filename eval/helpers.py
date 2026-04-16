@@ -1166,10 +1166,18 @@ def evaluate_two_stage_api(thread_pairs: List[Dict[str, Any]],
 
     # Load checkpoint if exists (for crash recovery)
     stage1_responses = {}
+    failed_in_checkpoint = 0
     if checkpoint_path.exists() and not override:
         with open(checkpoint_path, 'r') as f:
-            stage1_responses = json.load(f)
-        logger.info(f"📂 Loaded {len(stage1_responses)} responses from checkpoint")
+            raw_checkpoint = json.load(f)
+        # Remove failed entries (empty content) so they get retried
+        for cid, resp in raw_checkpoint.items():
+            has_content = (isinstance(resp, dict) and resp.get('content')) or (isinstance(resp, str) and resp)
+            if has_content:
+                stage1_responses[cid] = resp
+            else:
+                failed_in_checkpoint += 1
+        logger.info(f"📂 Loaded {len(stage1_responses)} successful responses from checkpoint ({failed_in_checkpoint} failed entries removed for retry)")
 
     # Build work items (skip already completed requests)
     work_items = []
@@ -1190,7 +1198,7 @@ def evaluate_two_stage_api(thread_pairs: List[Dict[str, Any]],
         max_workers = config.OPENAI_FLEX_CONFIG['max_workers']
         checkpoint_interval = config.OPENAI_FLEX_CONFIG['checkpoint_interval']
         completed = 0
-        failed = 0
+        failed = failed_in_checkpoint
 
         logger.info(f"🚀 Starting ThreadPoolExecutor with {max_workers} workers")
 
@@ -1246,6 +1254,28 @@ def evaluate_two_stage_api(thread_pairs: List[Dict[str, Any]],
         }
         for pair in thread_pairs
     ]
+
+    # =========================================================================
+    # FILTER: Drop pairs where Stage 1 failed (empty content)
+    # =========================================================================
+    original_count = len(thread_pairs)
+    filtered = [
+        (pair, stage1) for pair, stage1 in zip(thread_pairs, stage1_by_pair)
+        if stage1['violating_content'] and stage1['compliant_content']
+    ]
+
+    if len(filtered) < original_count:
+        dropped = original_count - len(filtered)
+        logger.warning(f"⚠️  Dropping {dropped}/{original_count} pairs with empty Stage 1 responses ({len(filtered)} remaining)")
+        thread_pairs, stage1_by_pair = zip(*filtered) if filtered else ([], [])
+        thread_pairs = list(thread_pairs)
+        stage1_by_pair = list(stage1_by_pair)
+
+        if not thread_pairs:
+            logger.error("❌ All Stage 1 responses are empty. Aborting evaluation.")
+            raise RuntimeError("All Stage 1 responses are empty — cannot proceed to Stage 2.")
+    else:
+        logger.info(f"✅ All {original_count} pairs have valid Stage 1 responses")
 
     # =========================================================================
     # STAGE 2: Local Qwen3-VL-30B via vLLM for Answer Extraction

@@ -225,6 +225,21 @@ def main():
             args.mode
         )
 
+        # If checkpoint has failed entries, clear stale results so retry flows naturally
+        checkpoint_path = output_dir / "flex_checkpoint.json"
+        if checkpoint_path.exists() and not args.override:
+            with open(checkpoint_path, 'r') as f:
+                checkpoint_data = json.load(f)
+            failed_count = sum(
+                1 for v in checkpoint_data.values()
+                if (isinstance(v, dict) and not v.get('content'))
+                or (isinstance(v, str) and not v)
+            )
+            if failed_count > 0:
+                for stale in list(output_dir.glob("performance_*.json")) + list(output_dir.glob("reasoning_*.json")):
+                    stale.unlink()
+                logger.info(f"♻️  Checkpoint has {failed_count} failed entries — cleared stale results for retry")
+
         existing_performance_files = list(output_dir.glob("performance_*.json"))
 
         if existing_performance_files and not args.override:

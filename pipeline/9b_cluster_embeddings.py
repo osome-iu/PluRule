@@ -57,7 +57,8 @@ import hdbscan
 from hdbscan import validity_index
 
 # Default static parameters - single source of truth for reproducibility
-DEFAULT_UMAP_STATIC_PARAMS = {'metric': 'cosine', 'random_state': 15, 'verbose': False}
+DEFAULT_UMAP_STATIC_PARAMS = {'metric': 'cosine', 'init': 'pca', 'n_epochs': 1000, 'verbose': False}
+UMAP_RANDOM_STATE = {'subreddit': 1, 'rule': 0}
 DEFAULT_HDBSCAN_STATIC_PARAMS = {'cluster_selection_method': 'eom'}
 
 
@@ -211,8 +212,11 @@ def process_umap_params(umap_params_tuple, embeddings, hdbscan_params_list, iter
     return results
 
 
-def run_grid_search(embeddings: np.ndarray, param_grid: Dict[str, List], data_name: str, logger) -> List[Dict]:
+def run_grid_search(embeddings: np.ndarray, param_grid: Dict[str, List], data_name: str, logger,
+                    umap_static_params: Dict = None) -> List[Dict]:
     """Run grid search over UMAP and HDBSCAN parameters in parallel."""
+    if umap_static_params is None:
+        umap_static_params = DEFAULT_UMAP_STATIC_PARAMS
 
     # Generate all parameter combinations
     umap_params_list = list(product(param_grid['n_neighbors'], param_grid['n_components'], param_grid['min_dist']))
@@ -223,14 +227,14 @@ def run_grid_search(embeddings: np.ndarray, param_grid: Dict[str, List], data_na
     logger.info(f"  UMAP combinations: {len(umap_params_list)}")
     logger.info(f"  HDBSCAN combinations: {len(hdbscan_params_list)}")
     logger.info(f"  Using {PROCESSES} parallel processes")
-    logger.info(f"  UMAP static params: {DEFAULT_UMAP_STATIC_PARAMS}")
+    logger.info(f"  UMAP static params: {umap_static_params}")
     logger.info(f"  HDBSCAN static params: {DEFAULT_HDBSCAN_STATIC_PARAMS}")
 
     # Prepare tasks for each UMAP param set
     tasks = []
     for i, umap_params in enumerate(umap_params_list):
         iteration_start = i * len(hdbscan_params_list) + 1
-        tasks.append((umap_params, embeddings, hdbscan_params_list, iteration_start, DEFAULT_UMAP_STATIC_PARAMS, DEFAULT_HDBSCAN_STATIC_PARAMS))
+        tasks.append((umap_params, embeddings, hdbscan_params_list, iteration_start, umap_static_params, DEFAULT_HDBSCAN_STATIC_PARAMS))
 
     # Run in parallel
     logger.info(f"Starting parallel grid search...")
@@ -303,14 +307,16 @@ def analyze_results(results: List[Dict], logger, min_clusters: int = 5, max_clus
 
 
 def apply_best_clustering(embeddings: np.ndarray, metadata: pd.DataFrame, best_params: Dict,
-                          entity_type: str, embeddings_dir: Path, logger) -> None:
+                          entity_type: str, embeddings_dir: Path, logger,
+                          umap_static_params: Dict = None) -> None:
     """Apply best clustering parameters and save results with cluster assignments."""
     logger.info(f"\nApplying best parameters for {entity_type}:")
     logger.info(f"  UMAP: {best_params['umap']}")
     logger.info(f"  HDBSCAN: {best_params['hdbscan']}")
 
     reduced_embeddings, labels, probabilities, _ = run_cluster(
-        embeddings, best_params['umap'], best_params['hdbscan']
+        embeddings, best_params['umap'], best_params['hdbscan'],
+        umap_static_params=umap_static_params
     )
 
     # Print cluster statistics
@@ -347,6 +353,10 @@ def process_entity_type(entity_type: str, param_grid: Dict, embeddings_dir: Path
     logger.info(f"{entity_type.upper()} EMBEDDINGS")
     logger.info("="*80)
 
+    # Build entity-specific UMAP static params with fixed random_state
+    umap_static_params = {**DEFAULT_UMAP_STATIC_PARAMS, 'random_state': UMAP_RANDOM_STATE[entity_type]}
+    logger.info(f"  UMAP random_state: {UMAP_RANDOM_STATE[entity_type]}")
+
     # Load data
     prefix = 'all_rule' if entity_type == 'rule' else 'all_subreddit'
     embeddings, metadata = load_embeddings(
@@ -358,7 +368,7 @@ def process_entity_type(entity_type: str, param_grid: Dict, embeddings_dir: Path
     # Grid search
     if run_grid:
         logger.info(f"\nRunning grid search for {entity_type}s...")
-        results = run_grid_search(embeddings, param_grid, f'{entity_type}s', logger)
+        results = run_grid_search(embeddings, param_grid, f'{entity_type}s', logger, umap_static_params)
         analysis = analyze_results(results, logger)
 
         output_file = output_dir / f'{entity_type}_grid_search_results.json'
@@ -375,7 +385,7 @@ def process_entity_type(entity_type: str, param_grid: Dict, embeddings_dir: Path
             with open(output_file) as f:
                 best_params = json.load(f)['best_params']
 
-        apply_best_clustering(embeddings, metadata, best_params, entity_type, embeddings_dir, logger)
+        apply_best_clustering(embeddings, metadata, best_params, entity_type, embeddings_dir, logger, umap_static_params)
 
 
 def main():

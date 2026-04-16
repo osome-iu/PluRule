@@ -33,7 +33,7 @@ import time
 
 # Disable vLLM's default logging configuration
 os.environ['VLLM_CONFIGURE_LOGGING'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # os.environ['TQDM_DISABLE'] = '1'
 
 # Add parent directory to path
@@ -126,7 +126,7 @@ def generate_cluster_labels(prompts: Dict[int, str], llm, tokenizer, response_bu
 
             # Generate multiple samples (with enough tokens for thinking + response)
             # Using recommended parameters: Temperature=0.6, TopP=0.95, TopK=20, MinP=0
-            sampling_params = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0, max_tokens=response_budget, n=n_samples)
+            sampling_params = SamplingParams(temperature=0.6, top_p=0.92, top_k=20, min_p=0.0, max_tokens=response_budget, n=n_samples)
             outputs = llm.chat(messages, sampling_params=sampling_params)
 
             # Extract all responses

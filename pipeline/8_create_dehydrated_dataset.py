@@ -41,7 +41,7 @@ from collections import defaultdict
 os.environ['VLLM_CONFIGURE_LOGGING'] = '0'
 
 # Use only GPU 1
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

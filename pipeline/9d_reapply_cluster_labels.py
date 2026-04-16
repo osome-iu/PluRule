@@ -195,10 +195,9 @@ def reapply_entity_labels(entity_type: str, embeddings_dir: Path, clustering_dir
     logger.info("\nDetecting cluster merges from NEW LABELs...")
     merge_mapping, label_groups = detect_cluster_merges(overrides, all_labels, logger)
 
-    # Check if we have any work to do
+    # Log if no overrides to apply (but still continue to write cluster_label column)
     if not overrides and not merge_mapping:
-        logger.info(f"No changes to apply for {entity_type} (no overrides, no duplicate labels)")
-        return
+        logger.info(f"No overrides to apply for {entity_type}, writing cluster_label column from existing labels")
 
     if not merge_mapping:
         logger.info("  No merges detected (all labels are unique)")
@@ -269,18 +268,26 @@ def reapply_entity_labels(entity_type: str, embeddings_dir: Path, clustering_dir
 
     # Renumber clusters to be contiguous (1, 2, 3, ...) excluding noise (-1)
     logger.info("\nRenumbering clusters to be contiguous...")
-    unique_ids = sorted([x for x in metadata['cluster_id'].unique() if x != -1])
-    renumber_map = {old_id: new_id for new_id, old_id in enumerate(unique_ids, start=1)}
+    unique_metadata_ids = sorted([x for x in metadata['cluster_id'].unique() if x != -1])
+    renumber_map = {old_id: new_id for new_id, old_id in enumerate(unique_metadata_ids, start=1)}
 
-    # Apply renumbering
+    # Apply renumbering to metadata
     metadata['cluster_id'] = metadata['cluster_id'].map(lambda x: renumber_map.get(x, x) if x != -1 else -1)
-    logger.info(f"  Renumbered {len(unique_ids)} clusters to 1-{len(unique_ids)}")
+    new_metadata_ids = sorted([x for x in metadata['cluster_id'].unique() if x != -1])
+    logger.info(f"  Renumbered {len(unique_metadata_ids)} clusters to 1-{len(new_metadata_ids)}")
 
-    # Build complete label mapping from updated JSON (using old IDs)
-    old_cluster_labels = {int(cid): data['label'] for cid, data in cluster_data.items()}
-
-    # Remap labels using renumbering
-    cluster_labels = {renumber_map.get(old_id, old_id): label for old_id, label in old_cluster_labels.items()}
+    # Map labels from JSON to metadata by sorted position
+    # JSON keys stay at original HDBSCAN IDs (matching override file)
+    # Metadata IDs are renumbered to 1-N
+    json_sorted_keys = sorted(cluster_data.keys(), key=int)
+    cluster_labels = {}
+    if len(json_sorted_keys) == len(new_metadata_ids):
+        for json_key, metadata_id in zip(json_sorted_keys, new_metadata_ids):
+            cluster_labels[metadata_id] = cluster_data[json_key]['label']
+        logger.info(f"  Mapped {len(json_sorted_keys)} JSON labels (keys {json_sorted_keys[0]}-{json_sorted_keys[-1]}) → metadata IDs {new_metadata_ids[0]}-{new_metadata_ids[-1]}")
+    else:
+        logger.warning(f"  ⚠️  JSON has {len(json_sorted_keys)} clusters but metadata has {len(new_metadata_ids)}; falling back to direct key mapping")
+        cluster_labels = {int(cid): data['label'] for cid, data in cluster_data.items()}
 
     # Apply labels
     metadata['cluster_label'] = metadata['cluster_id'].map(
