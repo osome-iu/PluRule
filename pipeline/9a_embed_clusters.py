@@ -315,7 +315,7 @@ def main():
 
         # Set CUDA device 1 by default
         if torch.cuda.is_available():
-            os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+            os.environ['CUDA_VISIBLE_DEVICES'] = '3'
             logger.info(f"🎯 Using CUDA device 1")
         else:
             logger.info(f"💻 Using CPU mode")

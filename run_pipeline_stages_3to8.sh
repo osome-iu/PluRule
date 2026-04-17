@@ -38,13 +38,13 @@
 # echo "Stage 8 complete"
 # echo ""
 
-# echo "=================================="
-# echo "Pipeline stages 3-8 completed successfully!"
-# echo "=================================="
+echo "=================================="
+echo "Pipeline stages 3-8 completed successfully!"
+echo "=================================="
 
 
 # Full Analysis Pipeline: Embed -> Cluster -> Label -> Plot
-#
+
 # Usage:
 #   ./run_pipeline_stages_3to8.sh              # Run full pipeline
 #   ./run_pipeline_stages_3to8.sh --skip-embed # Skip embedding step

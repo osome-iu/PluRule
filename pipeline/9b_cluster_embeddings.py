@@ -58,7 +58,7 @@ from hdbscan import validity_index
 
 # Default static parameters - single source of truth for reproducibility
 DEFAULT_UMAP_STATIC_PARAMS = {'metric': 'cosine', 'init': 'pca', 'n_epochs': 1000, 'verbose': False}
-UMAP_RANDOM_STATE = {'subreddit': 1, 'rule': 0}
+UMAP_RANDOM_STATE = {'subreddit': 140, 'rule': 218}
 DEFAULT_HDBSCAN_STATIC_PARAMS = {'cluster_selection_method': 'eom'}
 
 

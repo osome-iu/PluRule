@@ -221,7 +221,9 @@ def recalculate_performance(reasoning_path: Path) -> Dict[str, Any]:
         })
 
         for result in results:
-            cluster_label = result['metadata'][cluster_key]
+            cluster_label = result['metadata'].get(cluster_key)
+            if cluster_label is None:
+                continue
             cluster_stats[cluster_label]['violating_correct'] += result['violating']['score']
             cluster_stats[cluster_label]['compliant_correct'] += result['compliant']['score']
             cluster_stats[cluster_label]['total_correct'] += result['violating']['score'] + result['compliant']['score']
@@ -245,6 +247,9 @@ def recalculate_performance(reasoning_path: Path) -> Dict[str, Any]:
     rule_cluster_stats = calculate_cluster_stats(results, 'rule_cluster_label')
     subreddit_cluster_stats = calculate_cluster_stats(results, 'subreddit_cluster_label')
 
+    # Calculate per-language stats
+    language_stats = calculate_cluster_stats(results, 'subreddit_language')
+
     return {
         'overall': {
             'total_pairs': total_pairs,
@@ -257,7 +262,8 @@ def recalculate_performance(reasoning_path: Path) -> Dict[str, Any]:
             'total_correct': total_correct
         },
         'per_rule_cluster': rule_cluster_stats,
-        'per_subreddit_cluster': subreddit_cluster_stats
+        'per_subreddit_cluster': subreddit_cluster_stats,
+        'per_language': language_stats
     }
 
 

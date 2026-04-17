@@ -47,7 +47,7 @@ from collections import Counter
 from config import PATHS
 
 # Must match UMAP_RANDOM_STATE in pipeline/9b_cluster_embeddings.py
-UMAP_RANDOM_STATE = {'subreddit': 1, 'rule': 0}
+UMAP_RANDOM_STATE = {'subreddit': 140, 'rule': 218}
 
 
 def rotate_coordinates(coords: np.ndarray, angle_degrees: float) -> np.ndarray:
@@ -173,7 +173,7 @@ def apply_umap_2d(embeddings: np.ndarray, umap_params: dict, entity_type: str, l
     """
     min_dist = 1.0
     spread = 1.0
-    repulsion_strength = 0.5
+    repulsion_strength = 0.25
     n_neighbors = umap_params['n_neighbors']
     tw_tag = f'_tw{target_weight}' if cluster_labels is not None and target_weight > 0.0 else ''
     rs_tag = f'_rep{repulsion_strength}' if repulsion_strength != 1.0 else ''
@@ -322,7 +322,7 @@ def plot_cluster_on_axes(ax, coords_2d: np.ndarray, metadata: pd.DataFrame, enti
     point_colors = np.array([cluster_colors.get(label, '#DDDDDD') for label in labels])
 
     # Plot noise points first (very faint)
-    point_size = 50  # Larger dots for better visibility
+    point_size = 35  # Larger dots for better visibility
     if n_noise > 0:
         ax.scatter(coords_2d[noise_mask, 0], coords_2d[noise_mask, 1], c='lightgray', s=point_size, alpha=0.15)
 
@@ -367,8 +367,8 @@ def main():
     """Main execution function."""
     # Parse arguments
     parser = argparse.ArgumentParser(description='Plot cluster visualizations (two-column ACL format)')
-    parser.add_argument('--rotate-sub', type=float, default=158, help='Rotation angle for subreddit clusters (default: 240)')
-    parser.add_argument('--rotate-rule', type=float, default=-70, help='Rotation angle for rule clusters (default: 310)')
+    parser.add_argument('--rotate-sub', type=float, default=160, help='Rotation angle for subreddit clusters (default: 240)')
+    parser.add_argument('--rotate-rule', type=float, default=58, help='Rotation angle for rule clusters (default: 310)')
     parser.add_argument('--grey-bars', action='store_true', help='Use grey bars instead of cluster colors')
     parser.add_argument('--target-weight', type=float, default=1.0,
                         help='Supervised UMAP target weight: 0.0=unsupervised, 1.0=fully supervised (default: 1.0)')

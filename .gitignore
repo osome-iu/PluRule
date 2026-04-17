@@ -17,6 +17,7 @@ archive_final.tar.gz
 output/
 trash/
 misc/
+backups/
 
 # Credentials - exclude everything except template
 credentials/*
@@ -25,6 +26,9 @@ credentials/*
 # Virtual environments
 venv/
 env/
+
+# npy cache
+*.npy
 
 # IDE
 .vscode/
