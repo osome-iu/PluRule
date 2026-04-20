@@ -57,7 +57,7 @@ best per model. 95% CIs are within ±1.3% everywhere. The
 "No rules broken" baseline is 50%.
 
 | Context | 4B Inst. | 4B Think. | 8B Inst. | 8B Think. | 30B Inst. | 30B Think. | GPT-5.2 Low | GPT-5.2 High |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|---|:---|:---|:---|:---|:---|:---|:---|:---|
 | Comment only                | **49.6** | 37.4     | **51.0** | 40.3     | 50.2     | 46.1     | 54.1     | 55.0     |
 | + Discussion                | 49.2 <sub>(−0.4)</sub>     | 39.8 <sub>(+2.4)</sub>     | 50.7 <sub>(−0.3)</sub>     | 43.9 <sub>(+3.6)</sub>     | 51.0 <sub>(+0.8)</sub>     | 48.2 <sub>(+2.1)</sub>     | 55.3 <sub>(+1.2)</sub>     | 56.2 <sub>(+1.2)</sub>     |
 | &nbsp;&nbsp;+ Submission    | 48.3 <sub>(−0.9)</sub>     | 44.9 <sub>(+5.1)</sub>     | 49.2 <sub>(−1.5)</sub>     | **47.2** <sub>(+3.3)</sub> | 51.1 <sub>(+0.1)</sub>     | 49.1 <sub>(+0.9)</sub>     | 56.8 <sub>(+1.5)</sub>     | 57.3 <sub>(+1.1)</sub>     |
