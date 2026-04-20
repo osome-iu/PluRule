@@ -12,6 +12,17 @@ paper.
 > **Paper:** *PLURULE: A Benchmark for Moderating Pluralistic Communities on
 > Social Media* <!-- TODO: arXiv link when processing completes -->
 
+<p align="center">
+  <img src="figures/plurule_example.png" alt="A PluRule example" width="720">
+</p>
+
+<p align="center"><em>
+A <strong>PluRule</strong> example: GPT-5.2 (high reasoning) is given the
+target comment with full context — subreddit description, rules, submission,
+and discussion thread — and asked to pick which rule, if any, was violated.
+The correct answer is (e); GPT-5.2 picks (c).
+</em></p>
+
 ## At a glance
 
 | Split | Instances | Comments | Images | Subreddits / Clusters | Rules / Clusters | Languages |
@@ -26,6 +37,52 @@ moderator cited a rule on the leaf comment, (b) a compliant sibling thread
 from the same submission, (c) the submission itself with any images, and
 (d) the subreddit's full rule set.
 
+## What it covers
+
+<p align="center">
+  <img src="figures/clusters_2d.png" alt="Cluster landscape" width="900">
+</p>
+
+<p align="center"><em>
+2D UMAP of (a) 1,989 subreddits and (b) 2,885 rules, colored by HDBSCAN
+cluster. Grey points are unclustered ("other"). Right: distributions of the
+13,371 instances across (c) 25 subreddit clusters and (d) 27 rule clusters.
+</em></p>
+
+## Main results
+
+Accuracy (%) across models and context levels on the test set.
+Numbers in parentheses show the delta from the previous row. Bold is
+best per model. 95% CIs are within ±1.3% everywhere. The
+"No rules broken" baseline is 50%.
+
+| Context | 4B Inst. | 4B Think. | 8B Inst. | 8B Think. | 30B Inst. | 30B Think. | GPT-5.2 Low | GPT-5.2 High |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Comment only                | **49.6** | 37.4     | **51.0** | 40.3     | 50.2     | 46.1     | 54.1     | 55.0     |
+| + Discussion                | 49.2 <sub>(−0.4)</sub>     | 39.8 <sub>(+2.4)</sub>     | 50.7 <sub>(−0.3)</sub>     | 43.9 <sub>(+3.6)</sub>     | 51.0 <sub>(+0.8)</sub>     | 48.2 <sub>(+2.1)</sub>     | 55.3 <sub>(+1.2)</sub>     | 56.2 <sub>(+1.2)</sub>     |
+| &nbsp;&nbsp;+ Submission    | 48.3 <sub>(−0.9)</sub>     | 44.9 <sub>(+5.1)</sub>     | 49.2 <sub>(−1.5)</sub>     | **47.2** <sub>(+3.3)</sub> | 51.1 <sub>(+0.1)</sub>     | 49.1 <sub>(+0.9)</sub>     | 56.8 <sub>(+1.5)</sub>     | 57.3 <sub>(+1.1)</sub>     |
+| &nbsp;&nbsp;&nbsp;&nbsp;+ User    | 48.9 <sub>(+0.6)</sub>     | **45.0** <sub>(+0.1)</sub> | 50.0 <sub>(+0.8)</sub>     | 46.7 <sub>(−0.5)</sub>     | **52.4** <sub>(+1.3)</sub> | 49.4 <sub>(+0.3)</sub>     | **57.4** <sub>(+0.6)</sub> | **57.7** <sub>(+0.4)</sub> |
+| &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ Images | 48.4 <sub>(−0.5)</sub> | 45.0 <sub>(+0.0)</sub>    | 49.8 <sub>(−0.2)</sub>     | 44.9 <sub>(−1.8)</sub>     | 52.3 <sub>(−0.1)</sub>     | **49.5** <sub>(+0.1)</sub> | **57.4** <sub>(+0.0)</sub> | 57.6 <sub>(−0.1)</sub>     |
+
+Even the best model (GPT-5.2 high reasoning with full context) only reaches
+**57.7%** — less than 8 points above the trivial baseline. Adding context
+(discussion thread, submission, user identifiers, images) helps by at most
+2–3 points. Open-weight models (Qwen3-VL-Instruct / -Thinking) don't beat
+baseline at all.
+
+### Per-cluster breakdown (GPT-5.2 high reasoning, full context)
+
+<p align="center">
+  <img src="figures/forest_gpt5-high.png" alt="GPT-5.2 high forest plot" width="900">
+</p>
+
+<p align="center"><em>
+Accuracy by (a) subreddit cluster and (b) rule cluster with 95% CI.
+Dashed line is the 50% baseline. Universal violations (civility,
+self-promotion) are solved well; context-dependent rules (low-effort,
+evidence-based, relevance) fall below baseline.
+</em></p>
+
 ## What do you want to do?
 
 ### ▶︎ Run the benchmark on the released dataset
@@ -33,7 +90,8 @@ from the same submission, (c) the submission itself with any images, and
 Start here if you want to evaluate a model on PluRule.
 
 1. Grab the three dehydrated split files from
-   <!-- TODO: HuggingFace link -->`<HF repo>` and place them under `./data/`.
+   [huggingface.co/datasets/osome-iu/PluRule](https://hf.co/datasets/osome-iu/PluRule)
+   and place them under `./data/`.
 2. Follow **[`hydrate/README.md`](hydrate/README.md)** to fill in comments,
    submissions, and media from the Pushshift archives (~a few hours, no GPU).
 3. Run your model through **[`eval/README.md`](eval/README.md)** — supports
@@ -59,7 +117,7 @@ agreement with the pipeline's labels on a 100-instance audit).
 ## Install
 
 ```bash
-git clone https://github.com/<org>/PluRule.git
+git clone https://github.com/osome-iu/PluRule.git
 cd PluRule
 
 # Pick the env that matches your goal:
@@ -93,12 +151,13 @@ PluRule/
 @misc{plurule2025,
   title  = {PLURULE: A Benchmark for Moderating Pluralistic Communities
             on Social Media},
-  author = {TODO},
+  author = {Kachwala, Zoher and Truong, Bao Tran and Muralidharan, Rasika and
+            Kwak, Haewoon and An, Jisun and Menczer, Filippo},
   year   = {2025},
   note   = {arXiv preprint},
 }
 ```
-<!-- TODO: replace with final BibTeX once arXiv ID is assigned -->
+<!-- TODO: add arXiv ID / eprint field once processing completes -->
 
 ## License
 
