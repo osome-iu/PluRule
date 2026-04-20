@@ -9,8 +9,8 @@ This repository contains the full construction pipeline, the scripts used to
 hydrate the released dataset from IDs, and the evaluation harness used in the
 paper.
 
-> **Paper:** *PluRule: A Multilingual, Multimodal Benchmark for Rule-Aware
-> Moderation on Reddit* <!-- TODO: arXiv link when processing completes -->
+> **Paper:** *PLURULE: A Benchmark for Moderating Pluralistic Communities on
+> Social Media* <!-- TODO: arXiv link when processing completes -->
 
 ## At a glance
 
@@ -91,8 +91,8 @@ PluRule/
 
 ```bibtex
 @misc{plurule2025,
-  title  = {PluRule: A Multilingual, Multimodal Benchmark for Rule-Aware
-            Moderation on Reddit},
+  title  = {PLURULE: A Benchmark for Moderating Pluralistic Communities
+            on Social Media},
   author = {TODO},
   year   = {2025},
   note   = {arXiv preprint},
@@ -102,6 +102,8 @@ PluRule/
 
 ## License
 
-TBA. Pipeline code will be released under an OSS license; the dataset is
-derived from publicly archived Pushshift data and will be distributed under
-terms consistent with that source.
+Code in this repository is released under the **MIT License** — see
+[`LICENSE`](LICENSE). The PluRule dataset itself is distributed separately on
+HuggingFace under its own license; the underlying moderator comments and
+submissions come from the publicly archived Pushshift Reddit corpus and are
+bound by Reddit's terms of service.
