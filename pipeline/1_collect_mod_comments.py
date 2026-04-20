@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Stage 1: Collect Moderator Comments from Arctic Shift
+Stage 1: Collect Moderator Comments from Pushshift
 
-Extracts distinguished moderator comments from Arctic Shift subreddit files,
+Extracts distinguished moderator comments from Pushshift subreddit files,
 filtering out bots and AutoModerator. Directly writes organized output by subreddit.
 
 This replaces the old Stage 1 (collect from RC files) + Stage 3 (consolidate by subreddit).
 
-Input:  Arctic Shift subreddit comment files
+Input:  Pushshift subreddit comment files
 Output: top_subreddits/{subreddit}_mod_comments.jsonl.zst + stage1_subreddit_mod_comment_rankings.json
 """
 
@@ -19,15 +19,15 @@ from typing import Dict, Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import PATHS, PROCESSES, ARCTIC_SHIFT_DATA, create_directories
+from config import PATHS, PROCESSES, PUSHSHIFT_DATA, create_directories
 from utils.logging import get_stage_logger, log_stage_start, log_stage_end, log_error_and_continue
 from utils.files import (read_json_file, write_json_file, process_files_parallel,
                         read_zst_lines, json_loads, process_zst_file_multi)
 from utils.reddit import is_bot_or_automoderator, is_moderator_reply_to_comment, normalize_subreddit_name, clean_rule_text
 
 
-def get_all_arctic_shift_subreddits(logger):
-    """Get list of all subreddit comment files from Arctic Shift.
+def get_all_pushshift_subreddits(logger):
+    """Get list of all subreddit comment files from Pushshift.
 
     Returns a list of (subreddit_name, filepath, file_size) tuples sorted
     by file_size descending so the largest subreddits start first (better
@@ -36,7 +36,7 @@ def get_all_arctic_shift_subreddits(logger):
     """
     subreddit_files = []
 
-    with os.scandir(ARCTIC_SHIFT_DATA) as shard_iter:
+    with os.scandir(PUSHSHIFT_DATA) as shard_iter:
         for shard_entry in shard_iter:
             if not shard_entry.is_dir(follow_symlinks=False):
                 continue
@@ -56,16 +56,16 @@ def get_all_arctic_shift_subreddits(logger):
                     ))
 
     subreddit_files.sort(key=lambda t: t[2], reverse=True)
-    logger.info(f"Found {len(subreddit_files)} subreddits in Arctic Shift")
+    logger.info(f"Found {len(subreddit_files)} subreddits in Pushshift")
     return subreddit_files
 
 
 def process_subreddit(args: tuple) -> Dict[str, Any]:
     """
-    Process a single subreddit from Arctic Shift: filter for mod comments and write to output.
+    Process a single subreddit from Pushshift: filter for mod comments and write to output.
     Uses process_zst_file_multi for efficient streaming.
     """
-    subreddit, arctic_file, _ = args  # Third element is file_size (for sorting only)
+    subreddit, pushshift_file, _ = args  # Third element is file_size (for sorting only)
     worker_logger = get_stage_logger(1, "collect_mod_comments", worker_identifier=f"subreddits/{subreddit}")
 
     worker_logger.info(f"🔄 Processing r/{subreddit}")
@@ -112,7 +112,7 @@ def process_subreddit(args: tuple) -> Dict[str, Any]:
                 return {'matched': False}
 
         # Use process_zst_file_multi for efficient streaming
-        stats = process_zst_file_multi(arctic_file, mod_comment_filter, {},
+        stats = process_zst_file_multi(pushshift_file, mod_comment_filter, {},
                                       progress_interval=10_000_000, logger=worker_logger)
 
         elapsed = time.time() - start_time
@@ -146,7 +146,7 @@ def generate_rankings(results: list) -> dict:
             "total_subreddits": len(sorted_results),
             "total_mod_comments": total_mod_comments,
             "collection_date": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "Arctic Shift subreddit files"
+            "source": "Pushshift subreddit files"
         },
         "rankings": [
             {
@@ -166,38 +166,38 @@ def generate_rankings(results: list) -> dict:
 def main():
     """Main execution function."""
     logger = get_stage_logger(1, "collect_mod_comments")
-    log_stage_start(logger, 1, "Collect Moderator Comments from Arctic Shift")
+    log_stage_start(logger, 1, "Collect Moderator Comments from Pushshift")
     start_time = time.time()
 
     try:
         create_directories()
 
-        if not os.path.exists(ARCTIC_SHIFT_DATA):
-            logger.error(f"❌ Arctic Shift directory not found: {ARCTIC_SHIFT_DATA}")
+        if not os.path.exists(PUSHSHIFT_DATA):
+            logger.error(f"❌ Pushshift directory not found: {PUSHSHIFT_DATA}")
             log_stage_end(logger, 1, success=False, elapsed_time=time.time() - start_time)
             return 1
 
-        # Get all subreddit files from Arctic Shift (with disk cache to avoid
+        # Get all subreddit files from Pushshift (with disk cache to avoid
         # re-walking GPFS metadata on every rerun -- the walk takes ~20 minutes).
-        cache_file = os.path.join(PATHS['data'], 'stage1_arctic_shift_discovery_cache.json')
+        cache_file = os.path.join(PATHS['data'], 'stage1_pushshift_discovery_cache.json')
         if os.path.exists(cache_file):
-            logger.info(f"📁 Loading Arctic Shift discovery cache: {cache_file}")
+            logger.info(f"📁 Loading Pushshift discovery cache: {cache_file}")
             cache_data = read_json_file(cache_file)
             subreddit_files = [tuple(t) for t in cache_data.get('subreddit_files', [])]
             logger.info(f"   Loaded {len(subreddit_files)} subreddits from cache")
             logger.info(f"   (Delete {os.path.basename(cache_file)} to force rediscovery)")
         else:
-            logger.info("📁 Discovering subreddits from Arctic Shift...")
-            subreddit_files = get_all_arctic_shift_subreddits(logger)
+            logger.info("📁 Discovering subreddits from Pushshift...")
+            subreddit_files = get_all_pushshift_subreddits(logger)
             logger.info(f"💾 Saving discovery cache: {cache_file}")
             write_json_file(
-                {'arctic_shift_root': ARCTIC_SHIFT_DATA,
+                {'pushshift_root': PUSHSHIFT_DATA,
                  'subreddit_files': subreddit_files},
                 cache_file, pretty=False
             )
 
         if not subreddit_files:
-            logger.error("❌ No subreddit files found in Arctic Shift")
+            logger.error("❌ No subreddit files found in Pushshift")
             log_stage_end(logger, 1, success=False, elapsed_time=time.time() - start_time)
             return 1
 

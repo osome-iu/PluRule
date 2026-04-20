@@ -24,8 +24,8 @@ from typing import Dict, List, Any, Tuple
 import numpy as np
 from datetime import datetime
 
-# Set CUDA device before importing cupy
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+# Set CUDA device before importing cupy. Respects shell override.
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '3')
 
 import cupy as cp
 

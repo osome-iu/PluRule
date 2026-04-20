@@ -1,0 +1,43 @@
+# Conda environment for reproducing PluRule end-to-end (pipeline/).
+#
+# Setup:
+#   conda env create -f environment-pipeline.yml
+#   conda activate plurule-pipeline
+#
+# Requires:
+#   - Multiple CUDA GPUs (8B embedding model, 30B LLM judge)
+#   - Reddit API keys in credentials/reddit_api_keys.json  (Stage 2)
+
+name: plurule-pipeline
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - aria2
+  - pip
+  - pip:
+      # I/O (shared with hydrate)
+      - zstandard>=0.21.0
+      - orjson>=3.9.0
+      - tqdm>=4.65.0
+      - requests>=2.31.0
+      - torf>=4.2.0
+
+      # Numeric / plotting
+      - numpy>=1.24.0
+      - pandas>=2.0.0
+      - scipy>=1.10.0
+      - scikit-learn>=1.3.0
+      - matplotlib>=3.7.0
+
+      # Embedding matcher (Stage 3, 9a) + LLM judge (Stage 8) + cluster labeler (Stage 9c)
+      - torch>=2.0.0
+      - transformers>=4.40.0
+      - vllm>=0.6.0
+
+      # Clustering (Stage 9b)
+      - umap-learn>=0.5.5
+      - hdbscan>=0.8.33
+
+      # Reddit API (Stage 2)
+      - praw>=7.7.0

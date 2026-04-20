@@ -2,7 +2,7 @@
 """
 Stage 4: Collect and Organize Submission Comments (MEMORY-OPTIMIZED)
 
-Pass 1: Filter Arctic Shift to temp file (all matching comments), count per submission
+Pass 1: Filter Pushshift to temp file (all matching comments), count per submission
 Pass 2: Stream temp file, deduplicate, write submissions when complete
 
 Peak memory: <1 GB (only one submission in memory at a time)
@@ -20,7 +20,7 @@ from typing import Dict, Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import PATHS, PROCESSES, ARCTIC_SHIFT_DATA, create_directories
+from config import PATHS, PROCESSES, PUSHSHIFT_DATA, create_directories
 from utils.logging import get_stage_logger, log_stage_start, log_stage_end, log_error_and_continue
 from utils.files import (read_json_file, write_json_file, process_files_parallel,
                         read_zst_lines, json_loads, process_zst_file_multi)
@@ -37,13 +37,13 @@ def load_submission_ids(logger):
     return subreddit_to_ids
 
 
-def get_arctic_shift_comment_file(subreddit: str) -> str:
-    """Get Arctic Shift comment file path."""
+def get_pushshift_comment_file(subreddit: str) -> str:
+    """Get Pushshift comment file path."""
     first_char = subreddit[0].lower() if subreddit else 'unknown'
     if not first_char.isalpha() and first_char.isdigit():
         first_char = str(first_char)
 
-    dir_path = os.path.join(ARCTIC_SHIFT_DATA, first_char)
+    dir_path = os.path.join(PUSHSHIFT_DATA, first_char)
     if not os.path.exists(dir_path):
         return None
 
@@ -76,13 +76,13 @@ def process_subreddit_comments(args: tuple) -> Dict[str, Any]:
     worker_logger.info(f"🔄 Processing {subreddit} ({len(target_submission_ids)} target submissions)")
     start_time = time.time()
 
-    arctic_file = get_arctic_shift_comment_file(subreddit)
-    if not arctic_file:
-        worker_logger.warning(f"⚠️  No Arctic Shift file found for {subreddit}")
+    pushshift_file = get_pushshift_comment_file(subreddit)
+    if not pushshift_file:
+        worker_logger.warning(f"⚠️  No Pushshift file found for {subreddit}")
         return {'subreddit': subreddit, 'comments_collected': 0, 'submissions_with_comments': 0,
                 'lines_processed': 0, 'removed_deleted_count': 0, 'preserved_from_removal_count': 0,
                 'overwritten_with_better_count': 0, 'processing_time': 0, 'success': False,
-                'error': 'Arctic Shift file not found'}
+                'error': 'Pushshift file not found'}
 
     temp_dir = None
     try:
@@ -108,7 +108,7 @@ def process_subreddit_comments(args: tuple) -> Dict[str, Any]:
             return {'matched': False}
 
         state = {'expected_lines': expected_lines}
-        filter_stats = process_zst_file_multi(arctic_file, comment_filter, state, progress_interval=10_000_000, logger=worker_logger)
+        filter_stats = process_zst_file_multi(pushshift_file, comment_filter, state, progress_interval=10_000_000, logger=worker_logger)
         expected_lines = state['expected_lines']
 
         pass1_elapsed = time.time() - pass1_start
@@ -231,8 +231,8 @@ def main():
     try:
         create_directories()
 
-        if not os.path.exists(ARCTIC_SHIFT_DATA):
-            logger.error(f"❌ Arctic Shift not found: {ARCTIC_SHIFT_DATA}")
+        if not os.path.exists(PUSHSHIFT_DATA):
+            logger.error(f"❌ Pushshift not found: {PUSHSHIFT_DATA}")
             log_stage_end(logger, 4, success=False, elapsed_time=time.time() - overall_start)
             return 1
 
@@ -277,7 +277,7 @@ def main():
                 'avg_comments_per_submission': round(total_comments / total_submissions, 2) if total_submissions > 0 else 0,
                 'processing_time': round(time.time() - overall_start, 1),
                 'collection_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'source': 'Arctic Shift',
+                'source': 'Pushshift',
                 'version': 'memory_optimized_two_pass'
             },
             'subreddit_stats': [

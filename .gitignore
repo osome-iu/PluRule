@@ -19,9 +19,10 @@ trash/
 misc/
 backups/
 
-# Credentials - exclude everything except template
+# Credentials - exclude everything except templates
 credentials/*
 !credentials/reddit_api_keys.json.template
+!credentials/.env.template
 
 # Virtual environments
 venv/
@@ -35,10 +36,12 @@ env/
 .idea/
 *.swp
 
-# SLURM job files
+# SLURM / job files
 *.err
-*.txt
+slurm-*.out
 bigred3.sh
+reddit_jobs.txt
+job_status.txt
 
 # OS
 .DS_Store

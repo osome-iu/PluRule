@@ -165,13 +165,13 @@ def save_figure(fig, output_path, dpi=None, bbox_inches='tight'):
 
     output_path = Path(output_path)
 
-    # Save PDF (editable)
-    pdf_path = output_path.with_suffix('.pdf')
+    # Append extensions as strings (don't use with_suffix since model names
+    # like "gpt5.2-low" contain dots that would be misread as existing suffixes)
+    pdf_path = output_path.with_name(output_path.name + '.pdf')
     fig.savefig(pdf_path, format='pdf', dpi=dpi, bbox_inches=bbox_inches)
     print(f"✓ Saved: {pdf_path} ({dpi} DPI)")
 
-    # Save PNG (quick preview)
-    png_path = output_path.with_suffix('.png')
+    png_path = output_path.with_name(output_path.name + '.png')
     fig.savefig(png_path, format='png', dpi=dpi, bbox_inches=bbox_inches)
     print(f"✓ Saved: {png_path} ({dpi} DPI)")
 

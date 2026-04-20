@@ -1,0 +1,48 @@
+# Conda environment for PluRule benchmark evaluation (eval/).
+#
+# Setup:
+#   conda env create -f environment-eval.yml
+#   conda activate plurule-eval
+#
+# For API models, copy credentials/.env.template to credentials/.env and fill
+# in OPENAI_API_KEY / ANTHROPIC_API_KEY.
+# For human evaluation reproduction, you'll also need Google OAuth2 client
+# secrets (see eval/human_eval/README.md).
+
+name: plurule-eval
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - pip
+  - pip:
+      # I/O (shared with hydrate)
+      - zstandard>=0.21.0
+      - orjson>=3.9.0
+      - tqdm>=4.65.0
+      - requests>=2.31.0
+
+      # Local VLM inference
+      - torch>=2.0.0
+      - transformers>=4.40.0
+      - vllm>=0.6.0
+      - pillow>=10.0.0
+
+      # Plots + paper figures / tables
+      - numpy>=1.24.0
+      - pandas>=2.0.0
+      - scipy>=1.10.0
+      - scikit-learn>=1.3.0
+      - matplotlib>=3.7.0
+      - adjustText>=1.0.0
+      - umap-learn>=0.5.5
+
+      # API models
+      - openai>=1.40.0
+      - anthropic>=0.30.0
+      - python-dotenv>=1.0.0
+
+      # Human evaluation (eval/human_eval/)
+      - google-api-python-client>=2.100.0
+      - google-auth>=2.23.0
+      - google-auth-oauthlib>=1.1.0

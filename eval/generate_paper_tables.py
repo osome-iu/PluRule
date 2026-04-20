@@ -3,13 +3,15 @@
 Generate LaTeX results tables from evaluation performance files.
 
 Subcommands:
-    main        Main results table (contexts x models, overall accuracy)
+    main        Main results table (contexts x models, symmetric 1:1 accuracy)
+    weighted    Main results table with asymmetric 2:1 accuracy (violating weighted 2x)
     appendix    Appendix table (violating recall / compliant recall / accuracy)
-    all         Generate both tables
+    all         Generate all three tables
 
 Usage:
     python eval/generate_paper_tables.py all
     python eval/generate_paper_tables.py main
+    python eval/generate_paper_tables.py weighted
     python eval/generate_paper_tables.py appendix
 """
 
@@ -59,6 +61,30 @@ def _load_perf(model_base, variant, split, context):
     return data, data.get("metrics", {}).get("overall", {})
 
 
+def _compute_accuracy(overall, weights=(1, 1)):
+    """Return accuracy under the given (violating, compliant) weighting.
+
+    weights=(1,1) -> overall_accuracy (stored directly).
+    weights=(2,1) -> (2*V + C) / 3 from violating/compliant recall.
+    """
+    if overall is None:
+        return None
+    w_v, w_c = weights
+    if w_v == w_c == 1:
+        return overall.get("overall_accuracy")
+    v = overall.get("violating_accuracy")
+    c = overall.get("compliant_accuracy")
+    if v is None or c is None:
+        return None
+    return (w_v * v + w_c * c) / (w_v + w_c)
+
+
+def _baseline_accuracy(weights=(1, 1)):
+    """Always-'no violation' baseline: V=0, C=1."""
+    w_v, w_c = weights
+    return (w_v * 0.0 + w_c * 1.0) / (w_v + w_c)
+
+
 def _format_accuracy(value, decimals=1):
     return f"{value * 100:.{decimals}f}"
 
@@ -80,8 +106,9 @@ def _format_accuracy_with_delta(value, prev_value, decimals=1, bold=False):
 # MAIN TABLE
 # ============================================================================
 
-def generate_main_table():
-    """Generate main results LaTeX table."""
+def generate_main_table(weights=(1, 1)):
+    """Generate main results LaTeX table under the given (V, C) weighting."""
+    is_symmetric = weights == (1, 1)
     all_columns = []
     for model_base, _, variants in MODELS:
         for variant_name, _ in variants:
@@ -96,13 +123,11 @@ def generate_main_table():
         current_row = {}
         for model_base, variant_name in all_columns:
             _, overall = _load_perf(model_base, variant_name, SPLIT, context_name)
-            if overall:
-                acc = overall.get("overall_accuracy", 0)
+            acc = _compute_accuracy(overall, weights)
+            if is_symmetric and overall:
                 ci = overall.get("overall_accuracy_ci")
                 if ci and len(ci) == 2:
                     max_ci = max(max_ci, (ci[1] - ci[0]) / 2 * 100)
-            else:
-                acc = None
             prev = prev_row_values[(model_base, variant_name)]
             data_grid[(context_name, model_base, variant_name)] = (acc, prev)
             current_row[(model_base, variant_name)] = acc if acc else prev
@@ -156,13 +181,29 @@ def generate_main_table():
             cells.append(cell)
         table.append(" & ".join(cells) + " \\\\")
 
+    baseline_pct = _baseline_accuracy(weights) * 100
     table.append("\\midrule")
-    table.append(f"No Moderation & \\multicolumn{{{total_cols}}}{{c}}{{50.0}} \\\\")
+    table.append(f"No Moderation & \\multicolumn{{{total_cols}}}{{c}}{{{baseline_pct:.1f}}} \\\\")
     table.append("\\bottomrule")
     table.append("\\end{tabular}")
-    ci_str = f"{max_ci:.1f}" if max_ci > 0 else "1.1"
-    table.append(f"\\caption{{Overall accuracy (\\%) across different models and contexts on the {SPLIT} set. Numbers in parentheses indicate differences compared to accuracy values in the previous row. All values have 95\\% CI of $\\pm {ci_str}\\%$. See the Appendix for a breakdown of moderated and unmoderated accuracy.}}")
-    table.append("\\label{tab:results-across-contexts}")
+
+    if is_symmetric:
+        ci_str = f"{max_ci:.1f}" if max_ci > 0 else "1.1"
+        caption = (f"Overall accuracy (\\%) across different models and contexts on the {SPLIT} set. "
+                   "Numbers in parentheses indicate differences compared to accuracy values in the previous row. "
+                   f"All values have 95\\% CI of $\\pm {ci_str}\\%$. "
+                   "See the Appendix for a breakdown of moderated and unmoderated accuracy.")
+        label = "tab:results-across-contexts"
+    else:
+        w_v, w_c = weights
+        caption = (f"Weighted accuracy (\\%) with violating:compliant weighting of {w_v}:{w_c} "
+                   f"across different models and contexts on the {SPLIT} set. "
+                   "Numbers in parentheses indicate differences compared to accuracy values in the previous row. "
+                   f"The always-compliant baseline drops to {baseline_pct:.1f}\\% under this weighting.")
+        label = f"tab:results-across-contexts-weighted-{w_v}-{w_c}"
+
+    table.append(f"\\caption{{{caption}}}")
+    table.append(f"\\label{{{label}}}")
     table.append("\\end{table*}")
 
     return "\n".join(table)
@@ -302,8 +343,11 @@ def write_table(table_type='main'):
     tables_dir.mkdir(parents=True, exist_ok=True)
 
     if table_type == 'main':
-        latex = generate_main_table()
+        latex = generate_main_table(weights=(1, 1))
         output_file = tables_dir / f"results_table_{SPLIT}.tex"
+    elif table_type == 'weighted':
+        latex = generate_main_table(weights=(2, 1))
+        output_file = tables_dir / f"results_table_{SPLIT}_weighted_2_1.tex"
     else:
         latex = generate_appendix_table()
         output_file = tables_dir / f"results_table_appendix_{SPLIT}.tex"
@@ -320,20 +364,25 @@ def main():
         description='Generate LaTeX results tables from evaluation performance files'
     )
     subparsers = parser.add_subparsers(dest='command', required=True)
-    subparsers.add_parser('main', help='Main results table')
+    subparsers.add_parser('main', help='Main results table (symmetric 1:1)')
+    subparsers.add_parser('weighted', help='Main results table (asymmetric 2:1)')
     subparsers.add_parser('appendix', help='Appendix results table')
-    subparsers.add_parser('all', help='Generate both tables')
+    subparsers.add_parser('all', help='Generate all three tables')
 
     args = parser.parse_args()
 
     if args.command == 'main':
         return write_table('main')
+    elif args.command == 'weighted':
+        return write_table('weighted')
     elif args.command == 'appendix':
         return write_table('appendix')
     elif args.command == 'all':
         results = []
-        print("--- Main table ---")
+        print("--- Main table (1:1) ---")
         results.append(write_table('main'))
+        print("\n--- Weighted table (2:1) ---")
+        results.append(write_table('weighted'))
         print("\n--- Appendix table ---")
         results.append(write_table('appendix'))
         failures = sum(1 for r in results if r != 0)

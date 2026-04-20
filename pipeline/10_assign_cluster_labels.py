@@ -288,6 +288,10 @@ def dehydrate_dataset(hydrated: Dict) -> Dict:
                 'mod_comment': '[NEEDS_HYDRATION]',
                 'violating_thread': ['[NEEDS_HYDRATION]'] * len(pair['violating_thread']),
                 'compliant_thread': ['[NEEDS_HYDRATION]'] * len(pair['compliant_thread']),
+                # Root-to-leaf comment IDs. Enables single-pass hydration of thread
+                # bodies without having to walk parent_id pointers from Arctic Shift.
+                'violating_thread_ids': [c['id'] for c in pair['violating_thread']],
+                'compliant_thread_ids': [c['id'] for c in pair['compliant_thread']],
                 'violating_answer_options': pair['violating_answer_options'],
                 'violating_correct_answer': pair['violating_correct_answer'],
                 'compliant_answer_options': pair['compliant_answer_options'],
@@ -297,6 +301,8 @@ def dehydrate_dataset(hydrated: Dict) -> Dict:
 
         dehydrated['subreddits'].append({
             'subreddit': sub_data['subreddit'],
+            'title': sub_data.get('title', ''),
+            'description': sub_data.get('description', ''),
             'language': sub_data['language'],
             'data_version': sub_data['data_version'],
             'last_updated': sub_data['last_updated'],

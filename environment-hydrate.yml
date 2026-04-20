@@ -1,0 +1,20 @@
+# Conda environment for PluRule hydration (hydrate/).
+#
+# Setup:
+#   conda env create -f environment-hydrate.yml
+#   conda activate plurule-hydrate
+#   python hydrate/0_download.py
+
+name: plurule-hydrate
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - aria2
+  - pip
+  - pip:
+      - zstandard>=0.21.0
+      - orjson>=3.9.0
+      - tqdm>=4.65.0
+      - requests>=2.31.0
+      - torf>=4.2.0

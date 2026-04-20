@@ -6,7 +6,7 @@ Subcommands:
     forest          Cluster forest plot (accuracy + 95% CI per cluster)
     stacked         Cluster stacked bar plot (violating/overall/compliant)
     correlation     Cluster correlation scatter (accuracy vs. cluster size)
-    language        Language analysis diverging plot
+    language-grid   Appendix language grid: distribution + 4 model pairs
     all             Generate all figures
 
 Usage:
@@ -54,12 +54,12 @@ def _plot_forest_panel(ax, labels, values, cis, color, xlabel):
     for i in y_pos:
         ax.axhline(y=i, color='lightgray', linestyle='-', linewidth=0.5, alpha=0.5, zorder=1)
 
-    ax.scatter(values, y_pos, color=color, s=30, marker='s', zorder=3)
+    ax.scatter(values, y_pos, color=color, s=40, marker='s', zorder=3)
 
     # Accuracy values inside squares
     for i, val in enumerate(values):
         ax.text(val, i, f'{val:.0f}', ha='center', va='center',
-                fontsize=4.5, color='white', fontweight='bold', zorder=4)
+                fontsize=5.5, color='white', fontweight='bold', zorder=4)
 
     # CI error bars with caps
     for i, (ci_low, ci_high) in enumerate(cis):
@@ -102,7 +102,7 @@ def plot_forest(model, split, context, metric, phrase='baseline', mode='prefill'
         ax.text(0.98, 0.02, f'({label})', transform=ax.transAxes,
                 fontsize=10, verticalalignment='bottom', horizontalalignment='right')
 
-    fig.subplots_adjust(left=0.15, right=0.98, top=0.99, bottom=0.1, wspace=0.32)
+    fig.subplots_adjust(left=0.11, right=0.98, top=0.99, bottom=0.1, wspace=0.33)
 
     phrase_suffix = 'baseline' if phrase == 'baseline' else f'{phrase}_{mode}'
     filename = f"cluster_forest_{model}_{split}_{context}_{phrase_suffix}_{metric}"
@@ -171,7 +171,7 @@ def plot_stacked(model, split, context, phrase='baseline', mode='prefill'):
     fig.legend(handles=legend_elements, loc='upper center', ncol=3, fontsize=7,
                frameon=False, bbox_to_anchor=(0.5, 1.0))
 
-    fig.subplots_adjust(left=0.15, right=0.98, top=0.94, bottom=0.09, wspace=0.32)
+    fig.subplots_adjust(left=0.11, right=0.98, top=0.94, bottom=0.09, wspace=0.33)
 
     phrase_suffix = 'baseline' if phrase == 'baseline' else f'{phrase}_{mode}'
     filename = f"cluster_stacked_{model}_{split}_{context}_{phrase_suffix}"
@@ -268,7 +268,7 @@ def plot_correlation(model, split, context, metric='overall_accuracy',
     ax_left.set_ylim(ylim_sub)
 
     # RIGHT: Accuracy vs. # Rules
-    ax_right.scatter(accs, n_rules, color=COLOR_SUBREDDIT, s=20, alpha=0.7, marker='o', zorder=3)
+    ax_right.scatter(accs, n_rules, color=COLOR_RULE, s=20, alpha=0.7, marker='o', zorder=3)
     texts_right = [ax_right.text(accs[i], n_rules[i], name, fontsize=4.5, alpha=0.8)
                    for i, name in enumerate(names)]
     adjust_text(texts_right, ax=ax_right,
@@ -282,7 +282,7 @@ def plot_correlation(model, split, context, metric='overall_accuracy',
     if show_regression:
         slope, intercept, *_ = stats.linregress(accs, n_rules)
         x_line = np.linspace(accs.min(), accs.max(), 100)
-        ax_right.plot(x_line, slope * x_line + intercept, color=COLOR_SUBREDDIT,
+        ax_right.plot(x_line, slope * x_line + intercept, color=COLOR_RULE,
                       linewidth=1.5, alpha=0.6, linestyle='--', zorder=1)
 
     ax_right.set_xlabel('Accuracy (%)', fontsize=8)
@@ -314,7 +314,7 @@ def plot_correlation(model, split, context, metric='overall_accuracy',
 
 
 # ============================================================================
-# LANGUAGE ANALYSIS DIVERGING PLOT
+# LANGUAGE GRID (appendix: 5 rows × 2 columns)
 # ============================================================================
 
 LANGUAGE_NAMES = {
@@ -346,100 +346,174 @@ def _load_language_distribution():
     return sorted_data
 
 
-def plot_language(model='gpt5.2-high'):
-    """Diverging plot: distribution (left) + language labels (middle) + accuracy forest (right)."""
+LANGUAGE_GRID_MODELS = [
+    ('Qwen3-VL-4B',  'qwen3-vl-4b-instruct',  'qwen3-vl-4b-thinking',  'Instruct', 'Thinking'),
+    ('Qwen3-VL-8B',  'qwen3-vl-8b-instruct',  'qwen3-vl-8b-thinking',  'Instruct', 'Thinking'),
+    ('Qwen3-VL-30B', 'qwen3-vl-30b-instruct', 'qwen3-vl-30b-thinking', 'Instruct', 'Thinking'),
+    ('GPT-5.2',      'gpt5.2-low',            'gpt5.2-high',           'Low',      'High'),
+]
+
+
+def _get_language_accuracies(model, languages):
+    """Return (accs, ci_lows, ci_highs) arrays aligned to `languages`. NaN for missing."""
+    perf = load_performance(model, 'test', 'submission-media-discussion-user')
+    per_lang = perf['metrics'].get('per_language', {})
+    accs, ci_lows, ci_highs = [], [], []
+    for lang in languages:
+        if lang in per_lang and 'overall_accuracy' in per_lang[lang]:
+            acc = per_lang[lang]['overall_accuracy'] * 100
+            if 'overall_accuracy_ci' in per_lang[lang]:
+                cl, ch = per_lang[lang]['overall_accuracy_ci']
+                cl *= 100
+                ch *= 100
+            else:
+                cl, ch = acc, acc
+        else:
+            acc, cl, ch = np.nan, np.nan, np.nan
+        accs.append(acc)
+        ci_lows.append(cl)
+        ci_highs.append(ch)
+    return np.array(accs), np.array(ci_lows), np.array(ci_highs)
+
+
+def _draw_language_forest_panel(ax, accs, ci_lows, ci_highs, color):
+    """Draw forest markers + CI whiskers on a shared-y axis (no y-label handling)."""
+    n = len(accs)
+    y_pos = np.arange(n)
+    for i in y_pos:
+        ax.axhline(y=i, color='lightgray', linestyle='-', linewidth=0.5, alpha=0.5, zorder=1)
+
+    valid = ~np.isnan(accs)
+    ax.scatter(accs[valid], y_pos[valid], color=color, s=40, marker='s', zorder=3)
+    for i in np.where(valid)[0]:
+        ax.text(accs[i], i, f'{accs[i]:.0f}', ha='center', va='center',
+                fontsize=5.5, color='white', fontweight='bold', zorder=4)
+        ax.hlines(i, ci_lows[i], ci_highs[i], color=color, linewidth=1, zorder=2)
+        ax.vlines([ci_lows[i], ci_highs[i]], i - 0.25, i + 0.25, color=color, linewidth=1, zorder=2)
+
+    ax.set_xlim(-2, 102)
+    ax.set_ylim(-0.5, n - 0.5)
+    ax.invert_yaxis()
+    ax.axvline(x=50, color='gray', linestyle='--', linewidth=1.5, alpha=0.8, zorder=1)
+    style_clean_axis(ax, grid_axis='x')
+
+
+def plot_language_grid():
+    """5-row appendix figure: distribution + 4 model pairs (instruct/thinking)."""
+    import matplotlib.gridspec as gridspec
+
     print("Loading language distribution...")
     lang_distribution = _load_language_distribution()
 
-    perf_data = load_performance(model, 'test', 'submission-media-discussion-user')
-    per_language = perf_data['metrics'].get('per_language', {})
-    if not per_language:
-        print("No per_language metrics found in performance JSON")
+    # Collect languages with data in at least one model
+    per_model_langs = {}
+    for _, left_model, right_model, *_ in LANGUAGE_GRID_MODELS:
+        for m in (left_model, right_model):
+            perf = load_performance(m, 'test', 'submission-media-discussion-user')
+            per_model_langs[m] = set(perf['metrics'].get('per_language', {}).keys())
+    all_model_langs = set().union(*per_model_langs.values())
+
+    # Final language list: frequency >= 10 AND present in at least one model
+    counts_map = dict(lang_distribution)
+    languages = [lang for lang, count in lang_distribution
+                 if count >= 10 and lang in all_model_langs]
+    counts_arr = [counts_map[l] for l in languages]
+    language_labels = [LANGUAGE_NAMES.get(l, l) for l in languages]
+    n_langs = len(languages)
+
+    if n_langs == 0:
+        print("No languages to plot")
         return 1
 
-    # Merge distribution + accuracy
-    language_data = {}
-    for lang, count in lang_distribution:
-        if lang in per_language:
-            acc = per_language[lang]['overall_accuracy'] * 100
-            ci_key = 'overall_accuracy_ci'
-            if ci_key in per_language[lang]:
-                ci_low, ci_high = per_language[lang][ci_key]
-                ci_low *= 100
-                ci_high *= 100
-            else:
-                ci_low, ci_high = acc, acc
-            language_data[lang] = (count, acc, ci_low, ci_high)
+    print(f"  {n_langs} languages, {len(LANGUAGE_GRID_MODELS)} model pairs")
 
-    sorted_langs = [(lang, *language_data[lang])
-                    for lang, _ in lang_distribution if lang in language_data]
-    # Filter languages with < 10 instances
-    sorted_langs = [(l, c, a, cl, ch) for l, c, a, cl, ch in sorted_langs if c >= 10]
+    # Figure
+    fig = plt.figure(figsize=(6.3, 7))
+    gs = gridspec.GridSpec(5, 2, figure=fig,
+                           height_ratios=[1.1, 1.0, 1.0, 1.0, 1.0],
+                           hspace=0.15, wspace=0.05)
 
-    if not sorted_langs:
-        print("No language data to plot")
-        return 1
+    y_pos = np.arange(n_langs)
 
-    languages, counts, accs, ci_lows, ci_highs = zip(*sorted_langs)
-    language_labels = [LANGUAGE_NAMES.get(lang, lang) for lang in languages]
+    # ---- Row 1: distribution (spans both columns) ----
+    ax_dist = fig.add_subplot(gs[0, :])
+    ax_dist.barh(y_pos, counts_arr, height=0.8, color=COLOR_SUBREDDIT, edgecolor='none')
+    ax_dist.set_xlabel('Number of Instances', fontsize=8)
+    ax_dist.set_yticks(y_pos)
+    ax_dist.set_yticklabels(language_labels, fontsize=7)
+    ax_dist.set_ylim(-0.5, n_langs - 0.5)
+    ax_dist.invert_yaxis()
+    ax_dist.set_xscale('log')
+    style_clean_axis(ax_dist, grid_axis='x')
 
-    fig, (ax_left, ax_right) = create_two_column_figure(figsize=(6.3, 1.7))
-    y_pos = np.arange(len(languages))
+    # ---- Rows 2-5: forest pairs ----
+    forest_left_axes = []
+    n_rows = len(LANGUAGE_GRID_MODELS)
+    for row_idx, (model_label, left_model, right_model, left_panel_label, right_panel_label) in enumerate(LANGUAGE_GRID_MODELS, start=1):
+        ax_left = fig.add_subplot(gs[row_idx, 0])
+        ax_right = fig.add_subplot(gs[row_idx, 1], sharey=ax_left)
+        forest_left_axes.append((ax_left, model_label))
 
-    # LEFT: Distribution bars extending leftward
-    ax_left.barh(y_pos, counts, height=0.8, color=COLOR_SUBREDDIT, edgecolor='none')
-    ax_left.set_xlabel('Number of Instances', fontsize=8)
-    ax_left.set_yticks(y_pos)
-    ax_left.set_yticklabels([])  # Labels go in the gap
-    ax_left.tick_params(axis='y', length=0)
-    ax_left.set_ylim(-0.45, len(languages) - 0.2)
-    ax_left.invert_yaxis()
-    ax_left.spines['left'].set_visible(False)
-    style_clean_axis(ax_left, grid_axis='x', grid_width=1.0)
-    ax_left.set_xscale('log')
-    ax_left.set_xlim(left=10000, right=1)  # Reversed: bars extend leftward
+        accs_l, cl_l, ch_l = _get_language_accuracies(left_model, languages)
+        accs_r, cl_r, ch_r = _get_language_accuracies(right_model, languages)
 
-    # RIGHT: Forest plot with accuracies and CIs
-    for i in y_pos:
-        ax_right.axhline(y=i, color='lightgray', linestyle='-', linewidth=0.5, alpha=0.5, zorder=1)
+        _draw_language_forest_panel(ax_left, accs_l, cl_l, ch_l, COLOR_SUBREDDIT)
+        _draw_language_forest_panel(ax_right, accs_r, cl_r, ch_r, COLOR_RULE)
 
-    ax_right.scatter(accs, y_pos, color=COLOR_SUBREDDIT, s=50, marker='s', zorder=3)
-    for i, acc in enumerate(accs):
-        ax_right.text(acc, i, f'{acc:.0f}', ha='center', va='center',
-                      fontsize=4.5, color='white', fontweight='bold', zorder=4)
-    for i, (cl, ch) in enumerate(zip(ci_lows, ci_highs)):
-        ax_right.hlines(i, cl, ch, color=COLOR_SUBREDDIT, linewidth=1, zorder=2)
-        ax_right.vlines([cl, ch], i - 0.25, i + 0.25, color=COLOR_SUBREDDIT, linewidth=1, zorder=2)
+        # Language labels only on left panel
+        ax_left.set_yticks(y_pos)
+        ax_left.set_yticklabels(language_labels, fontsize=7)
+        plt.setp(ax_right.get_yticklabels(), visible=False)
+        ax_right.tick_params(axis='y', length=0)
 
-    ax_right.set_xlabel('Accuracy (%)', fontsize=8)
-    ax_right.set_yticks(y_pos)
-    ax_right.set_yticklabels([])
-    ax_right.tick_params(axis='y', length=0)
-    ax_right.set_ylim(-0.5, len(languages) - 0.5)
-    ax_right.set_xlim(0, 100)
-    ax_right.invert_yaxis()
-    ax_right.axvline(x=50, color='gray', linestyle='--', linewidth=1.5, alpha=0.8, zorder=1)
-    style_clean_axis(ax_right, grid_axis='x')
+        # Panel label in top-right corner of each panel
+        ax_left.text(0.98, 0.92, left_panel_label, transform=ax_left.transAxes,
+                     fontsize=8, ha='right', va='top', fontweight='bold')
+        ax_right.text(0.98, 0.92, right_panel_label, transform=ax_right.transAxes,
+                      fontsize=8, ha='right', va='top', fontweight='bold')
 
-    # Language labels centered in the gap
-    for i, label_text in enumerate(language_labels):
-        ax_left.text(1.125, i, label_text, transform=ax_left.get_yaxis_transform(),
-                     fontsize=7, ha='center', va='center')
+        # X-axis label only on bottom row
+        is_bottom = (row_idx == n_rows)
+        if is_bottom:
+            ax_left.set_xlabel('Accuracy (%)', fontsize=8)
+            ax_right.set_xlabel('Accuracy (%)', fontsize=8)
+        else:
+            plt.setp(ax_left.get_xticklabels(), visible=False)
+            plt.setp(ax_right.get_xticklabels(), visible=False)
 
-    # Subplot labels
-    ax_left.text(0.02, 0.02, '(a)', transform=ax_left.transAxes,
-                 fontsize=10, verticalalignment='bottom', horizontalalignment='left')
-    ax_right.text(0.98, 0.02, '(b)', transform=ax_right.transAxes,
-                  fontsize=10, verticalalignment='bottom', horizontalalignment='right')
+    fig.subplots_adjust(left=0.13, right=0.99, top=0.99, bottom=0.05,
+                        hspace=0.15, wspace=0.05)
 
-    fig.subplots_adjust(left=0.015, right=0.985, top=0.99, bottom=0.2, wspace=0.25)
+    # Shrink distribution row from the bottom so its x-axis/label has breathing room
+    dist_gap = 0.03  # figure fraction
+    pos = ax_dist.get_position()
+    ax_dist.set_position([pos.x0, pos.y0 + dist_gap, pos.width, pos.height - dist_gap])
 
-    filename = f"language_analysis_{model}_test_submission-media-discussion-user"
+    # ---- Row labels on far-left margin (after subplots_adjust settles positions) ----
+    for ax_left, model_label in forest_left_axes:
+        bbox = ax_left.get_position()
+        y_center = (bbox.y0 + bbox.y1) / 2
+        fig.text(0.01, y_center, model_label, fontsize=9, ha='left', va='center',
+                 rotation=90, fontweight='bold')
+
+    # ---- Faint horizontal separator between distribution row and forest block ----
+    # Place below the distribution's x-axis label by using its tight bbox
+    from matplotlib.lines import Line2D
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    dist_tb = ax_dist.get_tightbbox(renderer).transformed(fig.transFigure.inverted())
+    first_forest_ax = forest_left_axes[0][0]
+    forest_top = first_forest_ax.get_position().y1
+    y_sep = (dist_tb.y0 + forest_top) / 2
+    fig.add_artist(Line2D([0, 1], [y_sep, y_sep], transform=fig.transFigure,
+                          color='black', linestyle='-', linewidth=0.25, alpha=0.2))
+
+    filename = "language_grid"
     plots_dir = get_eval_dir() / 'plots'
     plots_dir.mkdir(parents=True, exist_ok=True)
     save_figure(fig, plots_dir / filename, dpi=PUBLICATION_DPI, bbox_inches=None)
     plt.close(fig)
-    print(f"Done: language diverging plot")
+    print(f"Done: language grid plot")
     return 0
 
 
@@ -478,9 +552,8 @@ def main():
     p_corr.add_argument('--cluster-type', default='rule', choices=['rule', 'subreddit'])
     p_corr.add_argument('--no-regression', action='store_true', help='Disable regression line')
 
-    # language
-    p_lang = subparsers.add_parser('language', help='Language analysis diverging plot')
-    p_lang.add_argument('--model', default='gpt5.2-high', help='Model name')
+    # language-grid
+    subparsers.add_parser('language-grid', help='Appendix language grid: 5 rows × 2 columns')
 
     # all
     p_all = subparsers.add_parser('all', help='Generate all figures')
@@ -499,8 +572,8 @@ def main():
                                 show_regression=not args.no_regression,
                                 cluster_split=args.cluster_split,
                                 cluster_type=args.cluster_type)
-    elif args.command == 'language':
-        return plot_language(args.model)
+    elif args.command == 'language-grid':
+        return plot_language_grid()
     elif args.command == 'all':
         results = []
         print("=" * 60)
@@ -516,8 +589,8 @@ def main():
         print("\n--- Correlation plot ---")
         results.append(plot_correlation(args.model, args.split, args.context, args.metric, args.phrase, args.mode))
 
-        print("\n--- Language plot ---")
-        results.append(plot_language(args.model))
+        print("\n--- Language grid ---")
+        results.append(plot_language_grid())
 
         failures = sum(1 for r in results if r != 0)
         print(f"\n{'=' * 60}")

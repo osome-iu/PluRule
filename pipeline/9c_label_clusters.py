@@ -33,7 +33,7 @@ import time
 
 # Disable vLLM's default logging configuration
 os.environ['VLLM_CONFIGURE_LOGGING'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')
 # os.environ['TQDM_DISABLE'] = '1'
 
 # Add parent directory to path

@@ -16,8 +16,8 @@ import time
 from typing import List, Dict, Any
 from collections import defaultdict, Counter
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add repo root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from config import PATHS
 from utils.files import write_json_file

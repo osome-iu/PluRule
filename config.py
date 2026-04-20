@@ -9,13 +9,24 @@ import os
 import multiprocessing
 
 # =============================================================================
-# BASE CONFIGURATION - Edit these for your environment
+# BASE CONFIGURATION - Override via environment variables or edit here.
 # =============================================================================
+# Defaults: BASE_DATA = repo root; PUSHSHIFT_DATA = <BASE_DATA>/data/pushshift.
+# Override with:
+#   export PLURULE_BASE_DATA=/your/working/dir
+#   export PLURULE_PUSHSHIFT_DATA=/your/pushshift/mirror
 
-# Base directories
-BASE_DATA = "/data3/zkachwal/reddit-mod-collection-pipeline"
-REDDIT_DATA = "/gpfs/slate-cnets/datasets/reddit/Pushshift"
-ARCTIC_SHIFT_DATA = "/gpfs/slate-cnets/datasets/reddit/Arcticshift/Subreddits/subreddits"
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+BASE_DATA = os.environ.get("PLURULE_BASE_DATA", _REPO_ROOT)
+PUSHSHIFT_DATA = os.environ.get(
+    "PLURULE_PUSHSHIFT_DATA", os.path.join(BASE_DATA, "data", "pushshift")
+)
+# Legacy Pushshift-dumps location (Stage 0 when fetching RC_*/RS_* style dumps).
+# Keep consistent with PUSHSHIFT_DATA by default.
+REDDIT_DATA = os.environ.get("PLURULE_REDDIT_DATA", PUSHSHIFT_DATA)
+
+CREDENTIALS_DIR = os.path.join(_REPO_ROOT, "credentials")
 
 # Processing settings
 DATE_RANGE = ("2005-12", "2023-02")  # (start, end) inclusive PushshiftDumps
@@ -59,15 +70,15 @@ DATA_FLOW = {
     },
 
     'stage1_mod_comments': {
-        'name': 'Collect Moderator Comments from Arctic Shift',
+        'name': 'Collect Moderator Comments from Pushshift',
         'script': '1_collect_mod_comments.py',
-        'input_paths': [],  # Uses Arctic Shift data directly
+        'input_paths': [],  # Uses Pushshift data directly
         'output_dir': 'top_subreddits',
         'produces': [
             '{subreddit}_mod_comments.jsonl.zst',  # in PATHS['top_subreddits'], one per subreddit
             '../../data/stage1_subreddit_mod_comment_rankings.json'  # actually written to PATHS['data']
         ],
-        'notes': 'Reads Arctic Shift subreddit files, filters mod comments. Replaces old Stage 1 + Stage 3.'
+        'notes': 'Reads Pushshift subreddit files, filters mod comments. Replaces old Stage 1 + Stage 3.'
     },
 
     'stage2_top_sfw': {
@@ -104,9 +115,9 @@ DATA_FLOW = {
 
     # Phase 3: Thread Construction
     'stage4_collect_submission_comments': {
-        'name': 'Collect and Organize Submission Comments from Arctic Shift',
+        'name': 'Collect and Organize Submission Comments from Pushshift',
         'script': '4_collect_submission_comments.py',
-        'input_paths': [],  # Uses Arctic Shift data directly
+        'input_paths': [],  # Uses Pushshift data directly
         'input_files': ['stage3_subreddit_submission_ids.json'],
         'output_dir': 'organized_comments',
         'produces': [
@@ -138,14 +149,14 @@ DATA_FLOW = {
     'stage6_collect_submissions': {
         'name': 'Collect Submissions from Discussion Threads',
         'script': '6_collect_submissions.py',
-        'input_paths': ['reddit_submissions'],  # Arctic Shift submissions
+        'input_paths': ['reddit_submissions'],  # Pushshift submissions
         'input_files': ['stage5_trees_and_threads_summary.json'],
         'output_dir': 'submissions',
         'produces': [
             '{subreddit}_submissions.zst',  # in PATHS['submissions']
             '../../data/stage6_submission_collection_stats.json'  # actually written to PATHS['data']
         ],
-        'notes': '3-phase: extract IDs from stage 5 summary → process RS files from Arctic Shift → consolidate by subreddit'
+        'notes': '3-phase: extract IDs from stage 5 summary → process RS files from Pushshift → consolidate by subreddit'
     },
 
     'stage7_collect_media': {
@@ -277,44 +288,9 @@ DATA_FLOW = {
             'stage10_dataset_stats_table.tex'  # LaTeX table for paper
         ],
         'notes': 'Assigns cluster labels to all thread pairs in the dataset based on embedding metadata.'
-    },
-
-    'stage11a_human_evaluation': {
-        'name': 'Human Evaluation Setup (Google Forms)',
-        'script': '11a_human_evaluation.py',
-        'input_files': [
-            'train_hydrated_clustered.json.zst',
-            'val_hydrated_clustered.json.zst',
-            'test_hydrated_clustered.json.zst'
-        ],
-        'output_dir': 'evaluation',
-        'produces': [
-            'stage11_human_evaluation_metadata.json'
-        ],
-        'notes': 'Samples comments for human evaluation across all splits, creates Google Forms. Requires OAuth2 credentials.'
-    },
-
-    'stage11b_retrieve_responses': {
-        'name': 'Retrieve Human Evaluation Responses',
-        'script': '11b_retrieve_responses.py',
-        'input_files': ['evaluation/stage11_human_evaluation_metadata.json'],
-        'output_dir': 'evaluation',
-        'produces': [
-            'stage11_human_annotations.json'
-        ],
-        'notes': 'Retrieves responses from Google Forms and aggregates annotations.'
-    },
-
-    'stage11c_evaluate_predictions': {
-        'name': 'Evaluate Model Predictions Against Human Annotations',
-        'script': '11c_evaluate_predictions.py',
-        'input_files': ['evaluation/stage11_human_annotations.json'],
-        'output_dir': 'evaluation',
-        'produces': [
-            'stage11_evaluation_results.json'
-        ],
-        'notes': 'Computes accuracy metrics comparing model predictions to human ground truth.'
     }
+
+    # Human evaluation scripts live in eval/human_eval/ (not pipeline stages).
 }
 
 # =============================================================================

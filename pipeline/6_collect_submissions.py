@@ -3,11 +3,11 @@
 Stage 6: Collect Submissions from Discussion Threads
 
 Collects submission data for submissions referenced in discussion thread pairs.
-Uses Arctic Shift subreddit-specific submission files for efficient lookup.
+Uses Pushshift subreddit-specific submission files for efficient lookup.
 
 Input:
 - discussion_threads/{subreddit}_discussion_threads.pkl (from Stage 5)
-- Arctic Shift: {first_letter}/{subreddit}_submissions.zst
+- Pushshift: {first_letter}/{subreddit}_submissions.zst
 
 Output:
 - submissions/{subreddit}_submissions.zst
@@ -22,7 +22,7 @@ from typing import Dict, Set, Any
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import PATHS, PROCESSES, ARCTIC_SHIFT_DATA, create_directories
+from config import PATHS, PROCESSES, PUSHSHIFT_DATA, create_directories
 from utils.logging import get_stage_logger, log_stage_start, log_stage_end, log_error_and_continue
 from utils.files import write_json_file, process_files_parallel, json_loads, process_zst_file_multi, read_json_file
 from utils.reddit import validate_submission_structure
@@ -57,15 +57,15 @@ def extract_submission_ids_from_threads(subreddit: str, logger) -> Set[str]:
         return set()
 
 
-def get_arctic_shift_submission_file(subreddit: str) -> str:
-    """Get path to Arctic Shift submission file for a subreddit (case-insensitive)."""
+def get_pushshift_submission_file(subreddit: str) -> str:
+    """Get path to Pushshift submission file for a subreddit (case-insensitive)."""
     first_char = subreddit[0].lower() if subreddit else 'unknown'
 
     # Handle numeric first characters
     if not first_char.isalpha() and first_char.isdigit():
         first_char = str(first_char)
 
-    dir_path = os.path.join(ARCTIC_SHIFT_DATA, first_char)
+    dir_path = os.path.join(PUSHSHIFT_DATA, first_char)
     if not os.path.exists(dir_path):
         return None
 
@@ -86,24 +86,24 @@ def get_arctic_shift_submission_file(subreddit: str) -> str:
 # ============================================================================
 
 def process_subreddit_submissions(args: tuple) -> Dict[str, Any]:
-    """Collect submissions for a single subreddit from Arctic Shift."""
+    """Collect submissions for a single subreddit from Pushshift."""
     subreddit, target_submission_ids, output_dir = args
     worker_logger = get_stage_logger(6, "collect_submissions", worker_identifier=f"subreddits/{subreddit}")
 
     worker_logger.info(f"🔄 Processing r/{subreddit} ({len(target_submission_ids)} target submissions)")
     start_time = time.time()
 
-    # Locate Arctic Shift file
-    arctic_file = get_arctic_shift_submission_file(subreddit)
-    if not arctic_file:
-        worker_logger.warning(f"⚠️  No Arctic Shift submission file found for {subreddit}")
+    # Locate Pushshift file
+    pushshift_file = get_pushshift_submission_file(subreddit)
+    if not pushshift_file:
+        worker_logger.warning(f"⚠️  No Pushshift submission file found for {subreddit}")
         return {
             'subreddit': subreddit,
             'submissions_collected': 0,
             'lines_processed': 0,
             'processing_time': 0,
             'success': False,
-            'error': 'Arctic Shift file not found'
+            'error': 'Pushshift file not found'
         }
 
     output_file = os.path.join(output_dir, f"{subreddit}_submissions.zst")
@@ -128,9 +128,9 @@ def process_subreddit_submissions(args: tuple) -> Dict[str, Any]:
             except Exception:
                 return {'matched': False}
 
-        # Stream Arctic Shift file and extract matching submissions
+        # Stream Pushshift file and extract matching submissions
         stats = process_zst_file_multi(
-            arctic_file,
+            pushshift_file,
             submission_filter,
             {},
             progress_interval=10_000_000,
@@ -170,15 +170,15 @@ def process_subreddit_submissions(args: tuple) -> Dict[str, Any]:
 def main():
     """Main execution function."""
     logger = get_stage_logger(6, "collect_submissions")
-    log_stage_start(logger, 6, "Collect Submissions from Arctic Shift")
+    log_stage_start(logger, 6, "Collect Submissions from Pushshift")
     start_time = time.time()
 
     try:
         create_directories()
 
-        # Validate Arctic Shift directory exists
-        if not os.path.exists(ARCTIC_SHIFT_DATA):
-            logger.error(f"❌ Arctic Shift directory not found: {ARCTIC_SHIFT_DATA}")
+        # Validate Pushshift directory exists
+        if not os.path.exists(PUSHSHIFT_DATA):
+            logger.error(f"❌ Pushshift directory not found: {PUSHSHIFT_DATA}")
             log_stage_end(logger, 6, success=False, elapsed_time=time.time() - start_time)
             return 1
 
@@ -253,7 +253,7 @@ def main():
                 'processing_time_seconds': round(processing_elapsed, 1),
                 'total_time_seconds': round(time.time() - start_time, 1),
                 'collection_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'source': 'Arctic Shift subreddit submission files'
+                'source': 'Pushshift subreddit submission files'
             },
             'subreddit_stats': [
                 {

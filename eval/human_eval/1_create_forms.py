@@ -32,10 +32,10 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add repo root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from config import PATHS
+from config import CREDENTIALS_DIR, PATHS
 from utils.files import write_json_file, read_compressed_json
 from utils.logging import get_stage_logger, log_stage_start, log_stage_end
 
@@ -52,8 +52,32 @@ SCOPES = [
     "https://www.googleapis.com/auth/forms.body",
     "https://www.googleapis.com/auth/drive.file",
 ]
-CLIENT_SECRETS = "/data3/zkachwal/reddit-mod-collection-pipeline/credentials/client_secret_795576073496-qo2r4ntgn1drrqo31p98it9bmtd2hvm4.apps.googleusercontent.com.json"
-TOKEN_FILE = "/data3/zkachwal/reddit-mod-collection-pipeline/credentials/token.json"
+# OAuth client secret: resolved from credentials/client_secret_*.json (first match).
+# The filename embeds your Google Cloud project's client ID, so users drop their
+# own `client_secret_*.apps.googleusercontent.com.json` into credentials/.
+TOKEN_FILE = os.path.join(CREDENTIALS_DIR, "token.json")
+
+
+def _resolve_client_secrets() -> str:
+    """Find credentials/client_secret_*.json; error clearly if missing/ambiguous."""
+    import glob
+    matches = sorted(glob.glob(os.path.join(CREDENTIALS_DIR, "client_secret_*.json")))
+    if not matches:
+        sys.exit(
+            f"No OAuth client secret found in {CREDENTIALS_DIR}.\n"
+            f"Download one from Google Cloud Console (Forms API + Drive API) and "
+            f"save it as `credentials/client_secret_<client-id>.apps.googleusercontent.com.json`."
+        )
+    if len(matches) > 1:
+        sys.exit(
+            f"Multiple OAuth client secrets found in {CREDENTIALS_DIR}:\n  "
+            + "\n  ".join(matches)
+            + "\nKeep only one."
+        )
+    return matches[0]
+
+
+CLIENT_SECRETS = _resolve_client_secrets()
 
 
 # ============================================================================
