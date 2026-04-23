@@ -38,6 +38,7 @@ except ImportError as e:
     )
 
 from utils.files import read_compressed_json, write_compressed_json
+from utils.logging import setup_stage_logger
 from utils.media import categorize_error, create_session, download_submission_media
 
 SPLITS = ("train", "val", "test")
@@ -78,14 +79,15 @@ def hydrate_split_media(
     media_root: Path,
     num_workers: int,
     skip_existing: bool,
+    logger,
 ) -> Dict[str, Any]:
     """Update media_files in a hydrated split in place; return stats."""
     in_path = dataset_dir / f"{split}_hydrated_clustered.json.zst"
     if not in_path.exists():
-        print(f"⚠️  Skipping {split}: {in_path} not found")
+        logger.warning(f"⚠️  Skipping {split}: {in_path} not found")
         return {}
 
-    print(f"\n📂 Loading {in_path}")
+    logger.info(f"📂 Loading {in_path}")
     data = read_compressed_json(str(in_path))
 
     # Collect tasks: (subreddit_idx, submission_id, submission_obj, media_dir)
@@ -118,8 +120,8 @@ def hydrate_split_media(
             tasks.append((sub_idx, sub_id, sub_obj, media_dir))
 
     if skipped_cached:
-        print(f"   ✓ {skipped_cached} submissions already have media on disk (skip-existing)")
-    print(f"   {len(tasks)} submissions to process")
+        logger.info(f"   ✓ {skipped_cached} submissions already have media on disk (skip-existing)")
+    logger.info(f"   {len(tasks)} submissions to process")
 
     if not tasks:
         out_path = dataset_dir / f"{split}_hydrated_clustered.json.zst"
@@ -166,14 +168,14 @@ def hydrate_split_media(
             pbar.update(1)
 
     elapsed = time.time() - t0
-    print(f"   ✅ {submissions['processed']} submissions, {total_files} files in {elapsed:.1f}s")
+    logger.info(f"   ✅ {submissions['processed']} submissions, {total_files} files in {elapsed:.1f}s")
 
     # Write updated hydrated JSON
     data.setdefault("metadata", {})
     data["metadata"]["media_hydrated_date"] = time.strftime("%Y-%m-%d %H:%M:%S")
     out_path = dataset_dir / f"{split}_hydrated_clustered.json.zst"
     size_mb = write_compressed_json(data, str(out_path))
-    print(f"💾 {out_path} ({size_mb:.1f} MB)")
+    logger.info(f"💾 {out_path} ({size_mb:.1f} MB)")
 
     return {
         "split": split,
@@ -218,6 +220,11 @@ def main() -> int:
 
     args.media_dir.mkdir(parents=True, exist_ok=True)
 
+    logger = setup_stage_logger("hydrate2_download_media")
+    logger.info("=" * 60)
+    logger.info("🚀 Hydrate Step 2: Download submission media")
+    logger.info("=" * 60)
+
     all_stats: Dict[str, Dict] = {}
     totals = {"submissions_processed": 0, "files_downloaded": 0}
     start = time.time()
@@ -225,7 +232,7 @@ def main() -> int:
     for split in args.splits:
         stats = hydrate_split_media(
             split, args.dataset_dir, args.media_dir,
-            args.num_workers, args.skip_existing,
+            args.num_workers, args.skip_existing, logger,
         )
         if not stats:
             continue
@@ -249,11 +256,11 @@ def main() -> int:
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
 
-    print("\n📊 Summary")
-    print(f"   processed:       {totals['submissions_processed']:,} submissions")
-    print(f"   files downloaded:{totals['files_downloaded']:,}")
-    print(f"   time:            {elapsed:.1f}s")
-    print(f"   summary:         {summary_path}")
+    logger.info("📊 Summary")
+    logger.info(f"   processed:       {totals['submissions_processed']:,} submissions")
+    logger.info(f"   files downloaded:{totals['files_downloaded']:,}")
+    logger.info(f"   time:            {elapsed:.1f}s")
+    logger.info(f"   summary:         {summary_path}")
 
     return 0
 

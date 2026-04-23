@@ -51,6 +51,7 @@ except ImportError as e:
 
 from config import PROCESSES, PUSHSHIFT_DATA
 from utils.files import json_loads, read_compressed_json, write_compressed_json
+from utils.logging import setup_stage_logger
 
 SPLITS = ("train", "val", "test")
 
@@ -216,21 +217,22 @@ def hydrate_subreddit_unified(args: Tuple[str, List[Dict], List[Tuple[str, int]]
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def load_manifest(pushshift_dir: Path) -> Dict[str, str]:
+def load_manifest(pushshift_dir: Path, logger) -> Dict[str, str]:
     """Load basename -> absolute path map written by hydrate/0_download.py."""
     manifest_path = pushshift_dir / "hydrate_manifest.json"
     if not manifest_path.exists():
-        sys.exit(
-            f"Manifest not found: {manifest_path}\n"
-            f"Run hydrate/0_download.py first."
+        logger.error(
+            f"Manifest not found: {manifest_path}. Run hydrate/0_download.py first."
         )
+        sys.exit(1)
     with open(manifest_path) as f:
         m = json.load(f)
     b2p = m.get("basename_to_path", {})
     if not b2p:
-        sys.exit(
+        logger.error(
             f"{manifest_path} has no `basename_to_path`. Re-run hydrate/0_download.py."
         )
+        sys.exit(1)
     return b2p
 
 
@@ -255,23 +257,29 @@ def main() -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    logger = setup_stage_logger("hydrate1_hydrate_dataset")
+    logger.info("=" * 60)
+    logger.info("🚀 Hydrate Step 1: Fill [NEEDS_HYDRATION] placeholders")
+    logger.info("=" * 60)
+
     # 1. Load manifest
-    print(f"📋 Loading manifest from {args.pushshift_dir}...")
-    basename_to_path = load_manifest(args.pushshift_dir)
-    print(f"   {len(basename_to_path)} Pushshift files available")
+    logger.info(f"📋 Loading manifest from {args.pushshift_dir}...")
+    basename_to_path = load_manifest(args.pushshift_dir, logger)
+    logger.info(f"   {len(basename_to_path)} Pushshift files available")
 
     # 2. Load ALL selected splits upfront
     splits_data: Dict[str, Dict] = {}
     for split in args.splits:
         path = args.dataset_dir / f"{split}_dehydrated_clustered.json.zst"
         if not path.exists():
-            print(f"⚠️  Skipping {split}: {path} not found")
+            logger.warning(f"⚠️  Skipping {split}: {path} not found")
             continue
-        print(f"📂 Loading {path}")
+        logger.info(f"📂 Loading {path}")
         splits_data[split] = read_compressed_json(str(path))
 
     if not splits_data:
-        sys.exit("No split files loaded")
+        logger.error("No split files loaded")
+        sys.exit(1)
 
     # 3. Build cross-split index: subreddit -> [(split, pos, sub_data_ref), ...]
     by_subreddit: Dict[str, List[Tuple[str, int, Dict]]] = defaultdict(list)
@@ -283,8 +291,8 @@ def main() -> int:
 
     n_unique = len(by_subreddit)
     n_entries = sum(len(v) for v in by_subreddit.values())
-    print(f"   {n_unique} unique subreddits across {n_entries} split entries "
-          f"(saves {n_entries - n_unique} redundant stream passes)")
+    logger.info(f"   {n_unique} unique subreddits across {n_entries} split entries "
+                f"(saves {n_entries - n_unique} redundant stream passes)")
 
     # 4. Build tasks (one per unique subreddit)
     tasks = []
@@ -313,8 +321,8 @@ def main() -> int:
         task_sizes.append(0)  # filled in next step
 
     if source_unavailable:
-        print(f"⚠️  {len(source_unavailable)} subreddits have no Pushshift source "
-              f"(marked `hydration_status: source_unavailable`)")
+        logger.warning(f"⚠️  {len(source_unavailable)} subreddits have no Pushshift source "
+                       f"(marked `hydration_status: source_unavailable`)")
 
     # 4b. Stat comments files in parallel and sort tasks largest-first (LPT heuristic).
     # Streaming the whole comments file is the dominant cost; dispatching biggest
@@ -323,7 +331,7 @@ def main() -> int:
     import os as _os
     from concurrent.futures import ThreadPoolExecutor as _TPE
 
-    print(f"📏 Stat-ing {len(tasks)} comments files to sort largest-first...")
+    logger.info(f"📏 Stat-ing {len(tasks)} comments files to sort largest-first...")
     t_stat = time.time()
 
     def _stat(path: str) -> int:
@@ -334,7 +342,7 @@ def main() -> int:
 
     with _TPE(max_workers=32) as _p:
         task_sizes = list(_p.map(lambda t: _stat(t[3]), tasks))
-    print(f"   done in {time.time() - t_stat:.1f}s")
+    logger.info(f"   done in {time.time() - t_stat:.1f}s")
 
     order = sorted(range(len(tasks)), key=lambda i: task_sizes[i], reverse=True)
     tasks = [tasks[i] for i in order]
@@ -342,10 +350,10 @@ def main() -> int:
     if tasks:
         top5 = ", ".join(f"r/{tasks[i][0]} ({task_sizes[i] / (1 << 30):.1f} GB)"
                          for i in range(min(5, len(tasks))))
-        print(f"   largest first: {top5}")
+        logger.info(f"   largest first: {top5}")
 
     # 5. Parallel hydration
-    print(f"🚀 Hydrating {len(tasks)} unique subreddits ({args.num_workers} workers)...")
+    logger.info(f"🚀 Hydrating {len(tasks)} unique subreddits ({args.num_workers} workers)...")
     t0 = time.time()
 
     # Aggregate per-split stats across all subreddits
@@ -368,7 +376,7 @@ def main() -> int:
             pbar.update(1)
 
     elapsed = time.time() - t0
-    print(f"✅ Hydrated in {elapsed:.1f}s")
+    logger.info(f"✅ Hydrated in {elapsed:.1f}s")
 
     # 6. Write each split
     summary: Dict[str, Any] = {
@@ -394,9 +402,9 @@ def main() -> int:
         size_mb = write_compressed_json(data, str(out_path))
 
         totals = totals_by_split[split]
-        print(f"💾 {split}: {out_path} ({size_mb:.1f} MB) — "
-              f"subs:{totals['hydrated_submissions']:,}/{totals['missing_submissions']:,} miss, "
-              f"cmts:{totals['hydrated_comments']:,}/{totals['missing_comments']:,} miss")
+        logger.info(f"💾 {split}: {out_path} ({size_mb:.1f} MB) — "
+                    f"subs:{totals['hydrated_submissions']:,}/{totals['missing_submissions']:,} miss, "
+                    f"cmts:{totals['hydrated_comments']:,}/{totals['missing_comments']:,} miss")
 
         summary["splits"][split] = {
             "output": str(out_path),
@@ -407,7 +415,7 @@ def main() -> int:
     summary_path = args.output_dir / "hydrate_summary.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"📊 Summary: {summary_path}")
+    logger.info(f"📊 Summary: {summary_path}")
 
     # Partial hydration is acceptable; exit 0 regardless.
     return 0
