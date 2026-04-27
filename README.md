@@ -4,12 +4,19 @@
 each pairing a rule-violating thread with a compliant thread from the same
 submission, labeled against the community's own rules.
 
-This repository contains the full construction pipeline, the scripts used to
-hydrate the released dataset from IDs, and the evaluation harness used in the
-paper.
+This repository contains the full construction pipeline, the scripts used to hydrate the released dataset from IDs, and the evaluation harness used in the following paper:
 
-> **Paper:** *PLURULE: A Benchmark for Moderating Pluralistic Communities on
-> Social Media* <!-- TODO: arXiv link when processing completes -->
+```bibtex
+@inproceedings{plurule2025,
+  title  = {{PluRule: A Benchmark for Moderating Pluralistic Communities
+            on Social Media}},
+  author = {Kachwala, Zoher and Truong, Bao Tran and Muralidharan, Rasika and
+            Kwak, Haewoon and An, Jisun and Menczer, Filippo},
+  year   = {2026},
+  booktitle = {Proc. ACL}
+  note   = {Forthcoming},
+}
+```
 
 <p align="center">
   <img src="figures/plurule_example.png" alt="A PluRule example" width="720">
@@ -143,20 +150,6 @@ PluRule/
 ├── environment-pipeline.yml   # reconstruction conda env
 └── environment-eval.yml       # evaluation conda env
 ```
-
-## Citing
-
-```bibtex
-@misc{plurule2025,
-  title  = {PLURULE: A Benchmark for Moderating Pluralistic Communities
-            on Social Media},
-  author = {Kachwala, Zoher and Truong, Bao Tran and Muralidharan, Rasika and
-            Kwak, Haewoon and An, Jisun and Menczer, Filippo},
-  year   = {2025},
-  note   = {arXiv preprint},
-}
-```
-<!-- TODO: add arXiv ID / eprint field once processing completes -->
 
 ## License
 
