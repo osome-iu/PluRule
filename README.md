@@ -1,7 +1,6 @@
 # PluRule
 
-**PluRule** is a multilingual, multimodal benchmark for Reddit rule-violation
-detection: 13,371 discussion instances drawn from the Pushshift archives,
+**PluRule** is a multilingual, multimodal benchmark for moderating pluralistic online communities: 13,371 discussion instances drawn from the Pushshift archives,
 each pairing a rule-violating thread with a compliant thread from the same
 submission, labeled against the community's own rules.
 
