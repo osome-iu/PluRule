@@ -16,8 +16,9 @@ annotators.
 - **Google OAuth2 client secrets** at
   `credentials/client_secret_<…>.apps.googleusercontent.com.json`.
   Create one in the Google Cloud Console with *Forms API* + *Drive API*
-  enabled. The current paths are hardcoded in `1_create_forms.py` and
-  `2_retrieve_responses.py`; edit them to match your OAuth client.
+  enabled. The form scripts auto-detect exactly one
+  `credentials/client_secret_*.json` file and fail clearly if none or multiple
+  are present.
 - On first run, each script opens a browser window for OAuth consent and
   caches the token at `credentials/token.json`.
 
@@ -105,7 +106,7 @@ matching the paper's breakdown.
 
 - Question filenames still begin with `stage11_*` for continuity with earlier
   pipeline outputs — these scripts used to live at `pipeline/11{a,b,c}_*.py`.
-- The three scripts each open a fresh OAuth session; the cached
-  `credentials/token.json` handles this transparently after the first run.
+- The Google API scripts use the cached `credentials/token.json` after the
+  initial OAuth consent flow.
 - Forms API writes are rate-limited; creating two 50-question forms takes
   a minute or two.

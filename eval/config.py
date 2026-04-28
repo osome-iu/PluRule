@@ -219,7 +219,7 @@ PHRASES = {
     'baseline': '',
     'cot': 'Let\'s think step by step',
     'analyze': 'Let\'s carefully analyze this content',
-    'artifacts': 'Let\'s look for violations and rule-breaking behavior',
+    'artifacts': 'Let\'s look for rule violations',
     'rules': 'Let\'s compare this against the subreddit rules'
 }
 

@@ -1,6 +1,6 @@
 # PluRule
 
-**PluRule** is a multilingual, multimodal benchmark for moderating pluralistic online communities: 13,371 discussion instances drawn from the Pushshift archives,
+**PluRule** is a multilingual, multimodal benchmark for detecting rule violations when moderating pluralistic communities on social media: 13,371 discussion instances drawn from the Pushshift archives,
 each pairing a rule-violating thread with a compliant thread from the same
 submission, labeled against the community's own rules.
 
@@ -13,7 +13,7 @@ This repository contains the full construction pipeline, the scripts used to hyd
   author = {Kachwala, Zoher and Truong, Bao Tran and Muralidharan, Rasika and
             Kwak, Haewoon and An, Jisun and Menczer, Filippo},
   year   = {2026},
-  booktitle = {Proc. ACL}
+  booktitle = {Proc. ACL},
   note   = {Forthcoming},
 }
 ```
@@ -101,8 +101,8 @@ Start here if you want to evaluate a model on PluRule.
 2. Follow **[`hydrate/README.md`](hydrate/README.md)** to fill in comments,
    submissions, and media from the Pushshift archives (~a few hours, no GPU).
 3. Run your model through **[`eval/README.md`](eval/README.md)** — supports
-   vLLM (Qwen-VL, LLaVA, Llama-Vision) and API models (Claude, GPT-4V) out
-   of the box.
+   the Qwen3-VL models configured in `eval/config.py` via vLLM and OpenAI API
+   models via the two-stage evaluator.
 
 ### ▶︎ Rebuild PluRule from scratch
 
@@ -132,8 +132,9 @@ conda env create -f environment-pipeline.yml  # end-to-end reconstruction (GPUs)
 conda env create -f environment-eval.yml      # benchmark evaluation (GPU or API keys)
 ```
 
-For API-model evaluation, copy `credentials/.env.template` to
-`credentials/.env` and fill in your `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+For API-model evaluation, make sure the relevant API key is available in the
+process environment. `credentials/.env.template` is provided as a template, but
+the current evaluator reads keys from the environment used to launch Python.
 
 ## Repo layout
 

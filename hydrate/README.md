@@ -191,8 +191,9 @@ Missing IDs (the Pushshift archive doesn't contain them) become
 `{"hydration_status": "missing", "id": ...}` instead of aborting the script.
 Subreddits whose Pushshift files aren't in the manifest have a
 `hydration_status: "source_unavailable"` flag set on their `sub_data`; their
-thread pairs are left with placeholders in place. Partial hydration is fine —
-the script always exits 0 and records everything in the summary.
+thread pairs are left with placeholders in place. Partial hydration is fine for
+these data-quality cases, and the script records them in the summary instead
+of aborting.
 
 ### Output
 

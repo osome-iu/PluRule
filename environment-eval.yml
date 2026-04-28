@@ -4,8 +4,8 @@
 #   conda env create -f environment-eval.yml
 #   conda activate plurule-eval
 #
-# For API models, copy credentials/.env.template to credentials/.env and fill
-# in OPENAI_API_KEY / ANTHROPIC_API_KEY.
+# For API models, make sure OPENAI_API_KEY is available in the process
+# environment before launching eval/evaluate.py.
 # For human evaluation reproduction, you'll also need Google OAuth2 client
 # secrets (see eval/human_eval/README.md).
 
@@ -37,10 +37,11 @@ dependencies:
       - adjustText>=1.0.0
       - umap-learn>=0.5.5
 
-      # API models
+      # Bootstrap confidence intervals (eval/add_bootstrap_ci.py)
+      - cupy-cuda12x>=13.0.0
+
+      # OpenAI API models
       - openai>=1.40.0
-      - anthropic>=0.30.0
-      - python-dotenv>=1.0.0
 
       # Human evaluation (eval/human_eval/)
       - google-api-python-client>=2.100.0

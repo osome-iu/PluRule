@@ -99,8 +99,10 @@ Shares the core torrent/aria2c logic with `hydrate/0_download.py` via
 `utils/pushshift_download.py`. Use the hydrate variant if you only want the
 dataset's subset.
 
-**Key flags:** `--output-dir`, `--torrent-file`, `--from-dir` (skip torrent
-when you already have a local mirror).
+**Key flags:** `--output-dir`, `--torrent-file`.
+
+This full reconstruction downloader does not have a `--from-dir` mode; that
+shortcut exists only in `hydrate/0_download.py`.
 
 ### 1. `1_collect_mod_comments.py` — extract moderator comments
 
@@ -112,7 +114,7 @@ bot-like usernames (`bot`, `automod`, …). Writes per-subreddit
 mod-comment count).
 
 **Caches the GPFS directory walk** to
-`data/stage1_arctic_shift_discovery_cache.json` (delete to force
+`data/stage1_pushshift_discovery_cache.json` (delete to force
 re-discovery; the walk can take ~20 min on slow filesystems).
 
 ### 2. `2_get_top_sfw_subreddits.py` — Reddit API metadata

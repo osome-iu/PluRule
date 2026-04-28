@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Reddit Moderation Evaluation Script
+PluRule Evaluation Script
 
-Evaluate Vision Language Models (VLMs) on Reddit moderation tasks using
-clustered datasets with multimodal inputs (text + images).
+Evaluate vision-language and API models on PluRule with clustered datasets
+and multimodal Reddit discussion context.
 
 Features:
-- Multiple model support: vLLM (Qwen, LLaVA, Llama-Vision) and API (Claude, GPT-4V)
+- Multiple model support: Qwen3-VL via vLLM and OpenAI API models
 - Configurable context types: control what information is exposed in prompts
 - Phrase variations: baseline, chain-of-thought, etc.
 - Two-stage evaluation: reasoning generation + clean answer extraction
 - Comprehensive metrics: overall, per-rule-cluster, per-subreddit-cluster accuracy
 
 Usage:
-    python evaluate.py --model qwen25-vl-7b --split test --context thread_with_rule --phrase cot --mode prefill
-    python evaluate.py --model llava-onevision-7b --split val --context full --phrase baseline --mode prefill
-    python evaluate.py --model qwen25-vl-7b --split test --context minimal --phrase analyze --mode prompt --debug
+    python evaluate.py --model qwen3-vl-8b-instruct --split test --context submission-discussion --phrase cot --mode prefill
+    python evaluate.py --model qwen3-vl-30b-thinking --split val --context submission-media-discussion-user --phrase baseline --mode prefill
+    python evaluate.py --model qwen3-vl-8b-instruct --split test --context none --phrase analyze --mode prompt --debug
 """
 
 import argparse
@@ -32,7 +32,7 @@ from pathlib import Path
 def _parse_cuda_arg() -> str:
     """Parse --cuda argument early, before heavy imports."""
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--cuda', type=str, default='0')
+    parser.add_argument('--cuda', type=str, default='1')
     args, _ = parser.parse_known_args()
     return args.cuda
 
@@ -60,7 +60,7 @@ import helpers
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Reddit Moderation Evaluation Script",
+        description="PluRule Evaluation Script",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -84,7 +84,7 @@ def parse_arguments() -> argparse.Namespace:
         '--context', '-c',
         type=str,
         required=True,
-        help='Context flags (dash-separated): none, subreddit, submission, media, discussion, user. Examples: "none", "submission-media", "subreddit-submission-media-discussion-user"'
+        help='Context flags (dash-separated): none, submission, media, discussion, user. Examples: "none", "submission-media", "submission-media-discussion-user"'
     )
 
     parser.add_argument(
