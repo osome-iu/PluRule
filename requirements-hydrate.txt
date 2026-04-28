@@ -1,0 +1,5 @@
+zstandard>=0.21.0
+orjson>=3.9.0
+tqdm>=4.65.0
+requests>=2.31.0
+torf>=4.2.0
