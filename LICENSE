@@ -22,8 +22,8 @@ SOFTWARE.
 
 ---
 
-Note: this license covers the code in this repository only. The PluRule
-benchmark dataset is distributed separately and is licensed under the terms
-declared on its release (see the dataset's HuggingFace page). The underlying
-moderator comments and submissions are drawn from the publicly archived
-Pushshift Reddit corpus; their use is bound by Reddit's terms of service.
+Note: this license covers the code in this repository and the released
+dehydrated PluRule dataset files: IDs, metadata, labels, rules, and
+placeholders. Hydrated moderator comments, submissions, and media are not
+redistributed by PluRule; they are reconstructed from the publicly archived
+Pushshift Reddit corpus and remain bound by Reddit's terms of service.

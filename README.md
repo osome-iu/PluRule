@@ -4,7 +4,11 @@
 each pairing a rule-violating thread with a compliant thread from the same
 submission, labeled against the community's own rules.
 
-This repository contains the full construction pipeline, the scripts used to hydrate the released dataset from IDs, and the evaluation harness used in the following paper:
+This repository contains the full construction pipeline, the scripts used to
+hydrate the released dataset from IDs, and the evaluation harness used in the
+paper.
+
+## Citation
 
 ```bibtex
 @inproceedings{plurule2025,
@@ -155,7 +159,8 @@ PluRule/
 ## License
 
 Code in this repository is released under the **MIT License** — see
-[`LICENSE`](LICENSE). The PluRule dataset itself is distributed separately on
-HuggingFace under its own license; the underlying moderator comments and
-submissions come from the publicly archived Pushshift Reddit corpus and are
-bound by Reddit's terms of service.
+[`LICENSE`](LICENSE). The released PluRule dataset files on HuggingFace are
+also MIT-licensed in their dehydrated form: IDs, metadata, labels, rules, and
+placeholders. Hydrated moderator comments, submissions, and media are not
+redistributed by PluRule; they are reconstructed from the publicly archived
+Pushshift Reddit corpus and remain bound by Reddit's terms of service.
