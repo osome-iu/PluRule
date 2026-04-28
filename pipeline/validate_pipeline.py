@@ -215,10 +215,10 @@ def validate_stage4(verbose=False):
     info.append(f"Files on disk: {len(subreddit_dirs)} subreddit directories, {total_pkls} submission_*.pkl files")
 
     if empty_dirs:
-        issues.append(f"WARNING: {len(empty_dirs)} organized_comments dirs are empty (no submission_*.pkl files)")
+        info.append(f"{len(empty_dirs)} organized_comments dirs are empty cleanup candidates")
         if verbose:
             for sub in sorted(empty_dirs)[:20]:
-                issues.append(f"  - {sub}/ (empty)")
+                info.append(f"  empty: {sub}/")
 
     # Cross-validate with Stage 3 submission IDs manifest
     sub_ids_file = os.path.join(PATHS['data'], 'stage3_subreddit_submission_ids.json')
@@ -230,7 +230,17 @@ def validate_stage4(verbose=False):
         missing_dirs = manifest_subreddits - set(subreddit_dirs)
 
         if extra_dirs:
-            issues.append(f"WARNING: {len(extra_dirs)} organized_comments dirs NOT in Stage 3 submission IDs manifest (potentially stale)")
+            extra_empty = [sub for sub in extra_dirs if pkl_per_sub.get(sub, 0) == 0]
+            extra_nonempty = [sub for sub in extra_dirs if pkl_per_sub.get(sub, 0) > 0]
+            if extra_empty:
+                info.append(f"{len(extra_empty)} empty organized_comments dirs are not in Stage 3 manifest")
+            if extra_nonempty:
+                issues.append(
+                    f"WARNING: {len(extra_nonempty)} non-empty organized_comments dirs NOT in Stage 3 submission IDs manifest"
+                )
+                if verbose:
+                    for sub in sorted(extra_nonempty)[:20]:
+                        issues.append(f"  - {sub}/ ({pkl_per_sub.get(sub, 0)} .pkl files)")
         if missing_dirs:
             issues.append(f"WARNING: {len(missing_dirs)} subreddits in manifest missing organized_comments dirs")
 
@@ -261,7 +271,12 @@ def validate_stage4(verbose=False):
 
         extra_vs_summary = set(subreddit_dirs) - summary_subreddits
         if extra_vs_summary:
-            issues.append(f"WARNING: {len(extra_vs_summary)} organized_comments dirs NOT in Stage 4 summary")
+            extra_empty = [sub for sub in extra_vs_summary if pkl_per_sub.get(sub, 0) == 0]
+            extra_nonempty = [sub for sub in extra_vs_summary if pkl_per_sub.get(sub, 0) > 0]
+            if extra_empty:
+                info.append(f"{len(extra_empty)} empty organized_comments dirs are not in Stage 4 summary")
+            if extra_nonempty:
+                issues.append(f"WARNING: {len(extra_nonempty)} non-empty organized_comments dirs NOT in Stage 4 summary")
 
     return issues, info
 
@@ -438,11 +453,21 @@ def validate_stage1(verbose=False):
         return issues, info
 
     rankings = read_json_file(rankings_file)
-    ranked_subreddits = {r['subreddit'] for r in rankings.get('rankings', [])}
-    info.append(f"Rankings: {len(ranked_subreddits)} subreddits")
+    ranking_entries = rankings.get('rankings', [])
+    ranked_subreddits = {r['subreddit'] for r in ranking_entries}
+    ranked_with_comments = {
+        r['subreddit'] for r in ranking_entries
+        if r.get('mod_comment_count', 0) > 0
+    }
+    zero_count_ranked = ranked_subreddits - ranked_with_comments
+    info.append(
+        f"Rankings: {len(ranked_subreddits)} subreddits "
+        f"({len(ranked_with_comments)} with >0 mod comments, {len(zero_count_ranked)} with 0)"
+    )
 
     extra_files = disk_subreddits - ranked_subreddits
-    missing_files = ranked_subreddits - disk_subreddits
+    zero_count_files = disk_subreddits & zero_count_ranked
+    missing_files = ranked_with_comments - disk_subreddits
 
     if extra_files:
         issues.append(f"CRITICAL: {len(extra_files)} mod_comments files on disk NOT in rankings (stale from previous runs)")
@@ -450,8 +475,14 @@ def validate_stage1(verbose=False):
             for sub in sorted(extra_files)[:20]:
                 issues.append(f"  - {sub}_mod_comments.jsonl.zst (stale)")
 
+    if zero_count_files:
+        issues.append(f"WARNING: {len(zero_count_files)} mod_comments files exist for zero-count ranking entries")
+        if verbose:
+            for sub in sorted(zero_count_files)[:20]:
+                issues.append(f"  - {sub}_mod_comments.jsonl.zst (zero-count entry)")
+
     if missing_files:
-        issues.append(f"WARNING: {len(missing_files)} subreddits in rankings missing mod_comments files on disk")
+        issues.append(f"WARNING: {len(missing_files)} ranked subreddits with >0 mod comments missing files on disk")
         if verbose:
             for sub in sorted(missing_files)[:20]:
                 issues.append(f"  - {sub} (missing)")
@@ -486,7 +517,8 @@ def validate_stage7(verbose=False):
         issues.append("WARNING: media directory not found")
         return issues, info
 
-    # Subreddit dirs that have at least one media file
+    # Subreddit dirs on disk. Empty dirs are common cleanup candidates and do
+    # not imply data drift.
     media_subreddits = []
     media_per_sub = {}
     total_media = 0
@@ -495,7 +527,10 @@ def validate_stage7(verbose=False):
         if not os.path.isdir(sub_path):
             continue
         try:
-            files = [f for f in os.listdir(sub_path) if not f.startswith('.')]
+            files = [
+                f for f in os.listdir(sub_path)
+                if not f.startswith('.') and os.path.isfile(os.path.join(sub_path, f))
+            ]
         except OSError:
             files = []
         media_subreddits.append(sub)
@@ -504,7 +539,9 @@ def validate_stage7(verbose=False):
 
     info.append(f"Files on disk: {len(media_subreddits)} media subreddit dirs, {total_media} media files")
 
-    # Cross-check against successful submission IDs manifest
+    # Cross-check against successful submission IDs manifest. This manifest
+    # includes both `complete` and `no_media` submissions, so it is not a list of
+    # submissions expected to have media files.
     ids_file = os.path.join(PATHS['data'], 'stage7_successful_submission_ids.json')
     if not os.path.exists(ids_file):
         issues.append("CRITICAL: stage7_successful_submission_ids.json not found")
@@ -525,48 +562,48 @@ def validate_stage7(verbose=False):
         issues.append("WARNING: stage7_successful_submission_ids.json contains no submission IDs (empty manifest)")
 
     extra_dirs = set(media_subreddits) - manifest_subreddits
-    missing_dirs = manifest_subreddits - set(media_subreddits)
 
     if extra_dirs:
-        issues.append(f"WARNING: {len(extra_dirs)} media subreddit dirs NOT in successful IDs manifest (potentially stale)")
-        if verbose:
-            for sub in sorted(extra_dirs)[:20]:
-                issues.append(f"  - media/{sub}/ (stale)")
-
-    if missing_dirs:
-        issues.append(f"WARNING: {len(missing_dirs)} subreddits in manifest missing media dirs on disk")
-        if verbose:
-            for sub in sorted(missing_dirs)[:20]:
-                issues.append(f"  - {sub} (missing)")
-
-    # Per-subreddit: each manifest submission ID should have at least one media file with that prefix.
-    # Media filename pattern: {submission_id}_{media_id}_{source}.{ext}
-    undercollected = []
-    for sub in sorted(set(media_subreddits) & manifest_subreddits):
-        expected_ids = set(manifest_map.get(sub, []))
-        if not expected_ids:
-            continue
-        sub_path = os.path.join(media_dir, sub)
-        try:
-            disk_files = os.listdir(sub_path)
-        except OSError:
-            disk_files = []
-        # Extract submission ID prefix (everything before first underscore)
-        present_ids = {f.split('_', 1)[0] for f in disk_files if '_' in f}
-        missing_ids = expected_ids - present_ids
-        if missing_ids:
-            undercollected.append((sub, len(missing_ids), len(expected_ids)))
-
-    if undercollected:
-        issues.append(f"WARNING: {len(undercollected)} subreddits missing media files for some manifest IDs")
-        if verbose:
-            for sub, missing, total in undercollected[:20]:
-                issues.append(f"  - {sub}: {missing}/{total} submission IDs without media")
+        extra_empty = [sub for sub in extra_dirs if media_per_sub.get(sub, 0) == 0]
+        extra_nonempty = [sub for sub in extra_dirs if media_per_sub.get(sub, 0) > 0]
+        if extra_empty:
+            info.append(f"{len(extra_empty)} empty media dirs are not in successful IDs manifest")
+        if extra_nonempty:
+            issues.append(f"WARNING: {len(extra_nonempty)} non-empty media dirs NOT in successful IDs manifest")
+            if verbose:
+                for sub in sorted(extra_nonempty)[:20]:
+                    issues.append(f"  - media/{sub}/ ({media_per_sub.get(sub, 0)} files)")
 
     # Verify stats file exists
     stats_file = os.path.join(PATHS['data'], 'stage7_media_collection_stats.json')
     if not os.path.exists(stats_file):
         issues.append("WARNING: stage7_media_collection_stats.json not found")
+    else:
+        stats = read_json_file(stats_file)
+        summary = stats.get('summary', {})
+        status_breakdown = stats.get('status_breakdown', {})
+
+        complete_count = status_breakdown.get('complete', 0)
+        no_media_count = status_breakdown.get('no_media', 0)
+        expected_successful = complete_count + no_media_count
+        reported_successful = summary.get('total_successful_submissions')
+        if reported_successful is not None and reported_successful != expected_successful:
+            issues.append(
+                f"WARNING: Stage 7 total_successful_submissions ({reported_successful}) "
+                f"!= complete + no_media ({expected_successful})"
+            )
+
+        reported_files = summary.get('total_files_downloaded')
+        if reported_files is not None and reported_files != total_media:
+            issues.append(
+                f"WARNING: Stage 7 summary reports {reported_files} downloaded files, "
+                f"but {total_media} media files are on disk"
+            )
+
+        info.append(
+            "Status breakdown: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(status_breakdown.items()))
+        )
 
     return issues, info
 
